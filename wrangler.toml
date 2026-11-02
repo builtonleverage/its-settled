@@ -6,7 +6,7 @@ compatibility_date = "2025-06-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "its-settled"
-database_id = "00000000-0000-0000-0000-000000000000"   # replace with the id from: npx wrangler d1 create its-settled
+database_id = "02916649-1510-4ebb-a978-26239f989033"   # forks: replace with your own id from `npx wrangler d1 create its-settled`
 
 # Daily run: adds monthly bills, then backs up. 02:30 UTC = 8:00 AM IST; change for your timezone.
 [triggers]
