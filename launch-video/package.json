@@ -1,0 +1,19 @@
+{
+  "name": "its-settled-launch-video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio",
+    "render:9x16": "remotion render ItsSettled9x16 out/its-settled-9x16.mp4 --codec=h264 --crf=20 --pixel-format=yuv420p",
+    "render:1x1": "remotion render ItsSettled1x1 out/its-settled-1x1.mp4 --codec=h264 --crf=20 --pixel-format=yuv420p",
+    "render": "npm run render:9x16 && npm run render:1x1"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.540",
+    "@remotion/cli": "4.0.540",
+    "@remotion/renderer": "4.0.540",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.540"
+  }
+}
