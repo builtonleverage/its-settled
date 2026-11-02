@@ -310,6 +310,10 @@ function homeTab(v) {
   const reqs = v.me.role === 'admin' ? v.members.filter(m => m.status === 'pending') : [];
   let h = reqs.map(m => `<div class="card" style="display:flex;align-items:center;gap:12px"><div class="ico">🙋</div><div class="grow"><div class="t1">${esc(m.name)}</div><div class="t2">wants to join</div></div>
     <button class="btn sm ghost" data-a="reject" data-id="${m.id}">Reject</button><button class="btn sm" data-a="approve" data-id="${m.id}">Approve</button></div>`).join('');
+  // "Whoever pays" monthly bills waiting for someone to say they paid.
+  h += (v.dues || []).map(d => `<div class="card" style="border-color:var(--accent)"><div style="display:flex;align-items:center;gap:12px"><div class="ico">${icon(d)}</div>
+    <div class="grow"><div class="t1">${esc(d.description)} · ${fmt(d.amount)}</div><div class="t2">Due since ${day(d.created_at)}. Who paid?</div></div></div>
+    <div class="btns" style="margin-top:12px"><button class="btn sm" data-a="due-pay" data-id="${d.id}">I paid</button><button class="btn sm ghost" data-a="due-skip" data-id="${d.id}">Skip this month</button></div></div>`).join('');
   h += `<div class="card hero"><div class="lbl">${mine >= 100 ? 'Overall, you get back' : mine <= -100 ? 'Overall, you owe' : 'Your balance'}</div>
     <div class="big ${mine >= 100 ? 'pos' : mine <= -100 ? 'neg' : ''}">${Math.abs(mine) < 100 ? 'All settled' : fmt(mine)}</div>
     <div class="t2">${amGuest(v) ? `${v.expenses.length} shared ${v.expenses.length === 1 ? 'entry' : 'entries'}` : `${residents(v).length} flatmates · ${v.expenses.length} entries`}</div></div>`;
@@ -350,14 +354,14 @@ function expenseRow(e, v, nm) {
 function billsTab(v) {
   const nm = names(v);
   let h = `<div class="card" style="background:var(--accent-soft);border-color:transparent;box-shadow:none"><div class="t1">Set it once</div>
-    <div class="t2 wrapt">Each bill is added on its day every month at 8 AM and split between flatmates. Guests are never included. Anyone on Telegram gets a ping.</div></div>
+    <div class="t2 wrapt">Bills with one regular payer are added on their day at 8 AM. For "whoever pays" bills, the app asks who paid on the day and reminds everyone every 2 days until someone taps I paid. Guests are never included.</div></div>
     <div class="sec"><h2>Monthly bills</h2><button class="btn sm" data-a="bill-new">Add bill</button></div>`;
   if (!v.recurring.length) return h + `<div class="card empty">No monthly bills yet.<br>Add rent, maid, cook or maintenance once.</div>`;
   return h + `<div class="card">` + v.recurring.map(r => {
     const split = r.split ? JSON.parse(r.split).map(id => nm[id]).filter(Boolean).join(', ') : 'all flatmates';
     const payer = nm[r.paid_by] || '?';
     return `<div class="row"><div class="ico">${icon({ description: r.description })}</div><div class="grow"><div class="t1">${esc(r.description)}</div>
-      <div class="t2">On the ${ord(r.day)} · ${esc(payer)} ${payer === 'You' ? 'pay' : 'pays'} · ${esc(split)}</div></div>
+      <div class="t2 wrapt">On the ${ord(r.day)} · ${r.mode === 'claim' ? 'whoever pays' : `${esc(payer)} ${payer === 'You' ? 'pay' : 'pays'}`} · ${esc(split)}</div></div>
       <div class="amt"><div class="a1">${fmt(r.amount)}</div></div><button class="btn sm ghost" data-a="bill-del" data-id="${r.id}" aria-label="Stop ${esc(r.description)}">✕</button></div>`;
   }).join('') + `</div>`;
 }
@@ -502,7 +506,7 @@ const SHEETS = {
       <div class="chips" style="margin-top:8px">${['Rent', 'Maid', 'Cook', 'Maintenance', 'Wifi'].map(q => `<button type="button" class="chip" data-a="quick" data-q="${q}">${q}</button>`).join('')}</div>
       <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:10px"><div><label class="f" for="b-amt">Amount</label><input class="in" id="b-amt" name="amount" inputmode="decimal" placeholder="${esc(SYMBOL)}0" required></div>
       <div><label class="f" for="b-day">Day of month</label><input class="in" id="b-day" name="day" inputmode="numeric" value="1" required></div></div>
-      <label class="f">Who pays it</label>${chips(res, [v.me.id], 'paid', false)}
+      <label class="f">Who pays it</label>${chips([...res, { id: '__claim__', name: 'Whoever pays that month' }], [v.me.id], 'paid', false)}
       <label class="f">Split between</label>${chips(res, res.map(m => m.id), 'split', true)}
       <label class="toggle"><input type="checkbox" name="addNow"> Also add it for this month now</label>
       <button class="btn block" style="margin-top:20px">Save bill</button></form>`;
@@ -547,6 +551,13 @@ const SHEETS = {
         <option value="new" ${s.map[n] === 'new' ? 'selected' : ''}>Add “${esc(n)}”, joins later</option></select></div>`).join('') +
       `</div><div class="t2 wrapt" style="margin-bottom:14px">People added now can claim their history when they join. You pick them while approving.</div>
       <button class="btn block" data-a="imp-go">Import</button><button class="btn ghost block" style="margin-top:8px" data-a="imp-reset">Choose another file</button>`;
+  },
+  due(v, s) {
+    const d = (v.dues || []).find(x => x.id === s.id); if (!d) return '<div class="empty">This bill is already sorted.</div>';
+    return `<form data-f="due" data-id="${d.id}"><h3>${icon(d)} ${esc(d.description)}</h3><div class="t2 wrapt">Change the amount if it was different this month, for example leave days.</div>
+      <label class="f" for="d-amt">Amount</label><input class="in huge" id="d-amt" name="amount" inputmode="decimal" value="${d.amount / 100}" required>
+      <label class="f">Paid by</label>${chips(asYou(v, residents(v)), [v.me.id], 'paid', false)}
+      <button class="btn block" style="margin-top:20px">Mark paid</button></form>`;
   },
   restore(v) {
     return `<h3>Restore a backup</h3><div class="t2 wrapt" style="margin:6px 0 16px">This replaces all entries and monthly bills with the backup. Everyone keeps their login.
@@ -610,6 +621,8 @@ document.addEventListener('click', async e => {
     case 'settle': open({ type: 'settle', from: el.dataset.from, to: el.dataset.to, amount: +el.dataset.amt }); break;
     case 'exp': open({ type: 'exp', id: el.dataset.id }); break;
     case 'bill-new': open({ type: 'bill' }); break;
+    case 'due-pay': open({ type: 'due', id: el.dataset.id }); break;
+    case 'due-skip': if (await ask('Skip this bill for this month?', 'Skip')) act('POST', `/api/dues/${el.dataset.id}/skip`, {}, 'Skipped for this month').catch(() => {}); break;
     case 'guest-new': open({ type: 'guestNew' }); break;
     case 'guest': open({ type: 'guest', id: el.dataset.id }); break;
     case 'close': close(); break;
@@ -710,7 +723,7 @@ document.addEventListener('change', async e => {
   }
   if (a === 'restore-file' && el.files[0]) {
     let snap; try { snap = JSON.parse(await el.files[0].text()); } catch { return toast("That file isn't a backup from this app"); }
-    if (!snap?.app === 'its-settled') return toast("That file isn't a backup from this app");
+    if (snap?.app !== 'its-settled') return toast("That file isn't a backup from this app");
     doRestore({ snapshot: snap });
   }
 });
@@ -735,8 +748,14 @@ document.addEventListener('submit', async e => {
   if (type === 'bill') {
     btn.disabled = true;
     const r = await act('POST', '/api/recurring', { description: f.description.value, amount: f.amount.value, day: f.day.value,
-      paidBy: picked(f, 'paid')[0], split: picked(f, 'split'), addNow: f.addNow.checked }, 'Monthly bill saved').catch(() => null);
+      paidBy: picked(f, 'paid')[0], mode: picked(f, 'paid')[0] === '__claim__' ? 'claim' : 'fixed', split: picked(f, 'split'), addNow: f.addNow.checked }, 'Monthly bill saved').catch(() => null);
     if (r) close(); else btn.disabled = false;
+  }
+  if (type === 'due') {
+    if (!toPaise(f.amount.value)) return toast('Enter an amount');
+    btn.disabled = true;
+    const r = await act('POST', `/api/dues/${f.dataset.id}/claim`, { amount: f.amount.value, paidBy: picked(f, 'paid')[0] }, 'Marked paid').catch(() => null);
+    if (r) close(); else { btn.disabled = false; refresh(); }
   }
   if (type === 'guest') {
     const days = picked(f, 'until')[0], name = f.name.value.trim();
@@ -773,8 +792,9 @@ function demoSeed() {
       { id: 'm3', name: 'Rohan', role: 'member', status: 'approved', tg: 0, created_at: t - 80 * d }, { id: 'm4', name: 'Kabir', role: 'member', status: 'pending', tg: 0, created_at: t - 3600e3 },
       { id: 'g1', name: 'Neha', role: 'guest', status: 'approved', tg: 0, host_id: 'm2', expires_at: endOfDay(4), created_at: t - 3 * d }],
     expenses: E.sort((a, b) => b.created_at - a.created_at),
-    recurring: [{ id: 'r1', description: 'Rent', amount: 4200000, paid_by: 'm1', split: null, day: 1 }, { id: 'r2', description: 'Maid', amount: 450000, paid_by: 'm2', split: null, day: 3 },
-      { id: 'r3', description: 'Cook', amount: 850000, paid_by: 'm3', split: null, day: 5 }, { id: 'r4', description: 'Maintenance', amount: 240000, paid_by: 'm1', split: null, day: 10 }],
+    recurring: [{ id: 'r1', description: 'Rent', amount: 4200000, paid_by: 'm1', split: null, day: 1, mode: 'fixed' }, { id: 'r2', description: 'Maid', amount: 450000, paid_by: 'm1', split: null, day: 3, mode: 'claim' },
+      { id: 'r3', description: 'Cook', amount: 850000, paid_by: 'm1', split: null, day: 5, mode: 'claim' }, { id: 'r4', description: 'Maintenance', amount: 240000, paid_by: 'm1', split: null, day: 10, mode: 'fixed' }],
+    dues: [{ id: 'd1', recurring_id: 'r2', description: `Maid · ${mo(0)}`, amount: 450000, status: 'open', created_at: t - d }],
   };
 }
 async function demoServer(method, path, body = {}) {
@@ -784,12 +804,14 @@ async function demoServer(method, path, body = {}) {
   const live = S.members.filter(m => m.status === 'approved' || m.status === 'placeholder');
   const res = live.filter(m => !isGuest(m)).map(m => m.id);
   const valid = new Set(guest ? [...res, me.id] : live.map(m => m.id));
+  S.dues ||= [];
   let m;
   if (method === 'GET' && path === '/api/me') {
     save();
     if (guest) return JSON.parse(JSON.stringify({ me: meOut, flat: { name: S.flat.name, simplify: 0, host: S.members.find(x => x.id === me.host_id)?.name },
       members: S.members.filter(x => x.status !== 'pending' && (!isGuest(x) || x.id === me.id)), expenses: S.expenses.filter(e => involves(e, me.id)), recurring: [], bot: null }));
-    return JSON.parse(JSON.stringify({ me: meOut, flat: S.flat, members: S.members, expenses: S.expenses, recurring: S.recurring, bot: null, backup: admin ? { sheet: false, last: null } : null }));
+    return JSON.parse(JSON.stringify({ me: meOut, flat: S.flat, members: S.members, expenses: S.expenses, recurring: S.recurring,
+      dues: S.dues.filter(x => x.status === 'open'), bot: null, backup: admin ? { sheet: false, last: null } : null }));
   }
   if (method === 'POST' && path === '/api/demo/view') { S.viewAs = body.id || 'm1'; save(); return { ok: true }; }
   if (method === 'POST' && path === '/api/expenses') {
@@ -804,20 +826,36 @@ async function demoServer(method, path, body = {}) {
   if (method === 'DELETE' && (m = path.match(/^\/api\/expenses\/(.+)$/))) {
     const e = S.expenses.find(x => x.id === m[1]);
     if (e && e.created_by !== me.id && !admin) fail('Only whoever added this, or the admin, can delete it');
-    S.expenses = S.expenses.filter(x => x.id !== m[1]); save(); return { ok: true };
+    S.expenses = S.expenses.filter(x => x.id !== m[1]);
+    const due = S.dues.find(x => x.expense_id === m[1]); if (due) Object.assign(due, { status: 'open', paid_by: null, expense_id: null });
+    save(); return { ok: true };
   }
   if (guest) fail('Guests can only add and settle their own entries');
+  if (method === 'POST' && (m = path.match(/^\/api\/dues\/(\w+)\/(claim|skip)$/))) {
+    const due = S.dues.find(x => x.id === m[1]);
+    if (!due || due.status !== 'open') fail(due?.status === 'paid' ? `${S.members.find(x => x.id === due.paid_by)?.name || 'Someone'} already marked it paid` : 'This bill is already sorted for this month');
+    if (m[2] === 'skip') { due.status = 'skipped'; save(); return { ok: true }; }
+    const rec = S.recurring.find(r => r.id === due.recurring_id), payer = res.includes(body.paidBy) ? body.paidBy : me.id;
+    const amount = toPaise(body.amount) || due.amount, want = rec?.split ? JSON.parse(rec.split).filter(id => res.includes(id)) : res, eid = 'e' + uid();
+    S.expenses.unshift({ id: eid, kind: 'expense', description: due.description, amount, paid_by: payer, split: equalShares(amount, want), created_by: me.id, source: 'auto', created_at: Date.now() });
+    Object.assign(due, { status: 'paid', paid_by: payer, amount, expense_id: eid }); save(); return { ok: true };
+  }
   if (method === 'POST' && path === '/api/recurring') {
     const amount = toPaise(body.amount), dd = Math.round(+body.day);
     if (!amount || !body.description || !(dd >= 1 && dd <= 31)) fail('Enter a name, an amount and a day between 1 and 31');
     const ids = (body.split || []).filter(id => res.includes(id));
-    S.recurring.push({ id: 'r' + uid(), description: body.description.trim(), amount, paid_by: body.paidBy || me.id, split: ids.length && ids.length < res.length ? JSON.stringify(ids) : null, day: dd });
+    const mode = body.mode === 'claim' ? 'claim' : 'fixed', id = 'r' + uid().slice(0, 8), label = new Date().toLocaleString(C.locale, { month: 'short' });
+    S.recurring.push({ id, description: body.description.trim(), amount, paid_by: mode === 'claim' ? me.id : body.paidBy || me.id, split: ids.length && ids.length < res.length ? JSON.stringify(ids) : null, day: dd, mode });
     S.recurring.sort((a, b) => a.day - b.day);
-    if (body.addNow) S.expenses.unshift({ id: 'e' + uid(), kind: 'expense', description: body.description.trim(), amount, paid_by: body.paidBy || me.id,
+    if (body.addNow && mode === 'claim') S.dues.push({ id: 'd' + uid().slice(0, 8), recurring_id: id, description: `${body.description.trim()} · ${label}`, amount, status: 'open', created_at: Date.now() });
+    else if (body.addNow) S.expenses.unshift({ id: 'e' + uid(), kind: 'expense', description: `${body.description.trim()} · ${label}`, amount, paid_by: body.paidBy || me.id,
       split: equalShares(amount, ids.length ? ids : res), created_by: me.id, source: 'auto', created_at: Date.now() });
     save(); return { ok: true };
   }
-  if (method === 'DELETE' && (m = path.match(/^\/api\/recurring\/(.+)$/))) { S.recurring = S.recurring.filter(r => r.id !== m[1]); save(); return { ok: true }; }
+  if (method === 'DELETE' && (m = path.match(/^\/api\/recurring\/(.+)$/))) {
+    S.recurring = S.recurring.filter(r => r.id !== m[1]); S.dues.forEach(x => { if (x.recurring_id === m[1] && x.status === 'open') x.status = 'skipped'; });
+    save(); return { ok: true };
+  }
   if (method === 'POST' && path === '/api/guests') {
     const id = 'g' + uid().slice(0, 8); S.members.push({ id, name: String(body.name).trim().slice(0, 30), role: 'guest', status: 'approved', tg: 0, host_id: me.id, expires_at: body.until || null, created_at: Date.now() });
     save(); return { id, token: 'demo-guest-' + id };

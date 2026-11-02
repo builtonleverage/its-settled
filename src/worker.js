@@ -61,7 +61,16 @@ const MIGRATIONS = [
     `CREATE TABLE IF NOT EXISTS recurring (id TEXT PRIMARY KEY, flat_id TEXT NOT NULL, description TEXT NOT NULL, amount INTEGER NOT NULL,
        paid_by TEXT NOT NULL, split TEXT, day INTEGER NOT NULL, last_run TEXT, active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL)`,
   ],
+  [ // v2: monthly bills can be "whoever pays" (mode 'claim'): each month creates a due that a flatmate claims
+    `ALTER TABLE recurring ADD COLUMN mode TEXT NOT NULL DEFAULT 'fixed'`,
+    `CREATE TABLE IF NOT EXISTS bill_dues (id TEXT PRIMARY KEY, flat_id TEXT NOT NULL, recurring_id TEXT NOT NULL, ym TEXT NOT NULL,
+       description TEXT NOT NULL, amount INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open', paid_by TEXT, expense_id TEXT,
+       last_nudge INTEGER, created_at INTEGER NOT NULL)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_dues_month ON bill_dues(recurring_id, ym)`,
+    `CREATE INDEX IF NOT EXISTS idx_dues_flat ON bill_dues(flat_id, status)`,
+  ],
 ];
+const NUDGE_MS = 46 * 3600e3; // "every 2 days" with the daily run; a little under 48h so run-time jitter can't skip a day
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady) return;
@@ -126,10 +135,10 @@ async function notifyAdmins(env, flatId, text, markup) {
   await Promise.all(results.map(r => send(env, r.tg_chat_id, text, markup)));
 }
 // Flat-wide pings go to flatmates only; guests never get them.
-async function notifyFlat(env, flatId, text, exceptId = '') {
+async function notifyFlat(env, flatId, text, exceptId = '', markup) {
   const { results } = await env.DB.prepare(
     `SELECT tg_chat_id FROM members WHERE flat_id=? AND status='approved' AND role<>'guest' AND tg_chat_id IS NOT NULL AND id<>?`).bind(flatId, exceptId).all();
-  await Promise.all(results.map(r => send(env, r.tg_chat_id, text)));
+  await Promise.all(results.map(r => send(env, r.tg_chat_id, text, markup)));
 }
 const HELP = `Type an amount and what it was for:
 <code>450 milk</code>  → split equally
@@ -205,8 +214,11 @@ async function api(req, env, ctx, url) {
         members: members.filter(m => m.status !== 'pending' && (!isGuest(m) || m.id === me.id)).map(({ tg, ...m }) => m),
         expenses: expenses.filter(e => involves(e, me.id)), recurring: [], bot: cfg(env).bot });
     }
-    const rec = (await db.prepare(`SELECT * FROM recurring WHERE flat_id=? AND active=1 ORDER BY day`).bind(me.flat_id).all()).results;
-    return J({ me: pub, flat: { name: me.flat_name, invite_code: me.invite_code, simplify: me.simplify }, members, expenses, recurring: rec,
+    const [rec, dues] = await Promise.all([
+      db.prepare(`SELECT * FROM recurring WHERE flat_id=? AND active=1 ORDER BY day`).bind(me.flat_id).all().then(r => r.results),
+      db.prepare(`SELECT id, recurring_id, description, amount, created_at FROM bill_dues WHERE flat_id=? AND status='open' ORDER BY created_at`).bind(me.flat_id).all().then(r => r.results),
+    ]);
+    return J({ me: pub, flat: { name: me.flat_name, invite_code: me.invite_code, simplify: me.simplify }, members, expenses, recurring: rec, dues,
       bot: cfg(env).bot, backup: isAdmin ? { sheet: !!env.BACKUP_URL, last: me.last_backup } : null });
   }
 
@@ -254,9 +266,28 @@ async function api(req, env, ctx, url) {
   }
 
   if ((m = p.match(/^\/api\/expenses\/(\w+)$/)) && M === 'DELETE') {
-    const r = await db.prepare(`UPDATE expenses SET deleted=1 WHERE id=? AND flat_id=? AND (created_by=? OR ?=1)`)
-      .bind(m[1], me.flat_id, me.id, isAdmin ? 1 : 0).run();
-    return r.meta.changes ? J({ ok: true }) : err('Only the person who added this, or the admin, can delete it', 403);
+    // Monthly-bill entries free their idempotency key, so a re-claim or re-run can create the entry again.
+    const r = await db.prepare(`UPDATE expenses SET deleted=1, ext_id=CASE WHEN ext_id LIKE 'rec:%' THEN NULL ELSE ext_id END
+                                WHERE id=? AND flat_id=? AND (created_by=? OR ?=1)`).bind(m[1], me.flat_id, me.id, isAdmin ? 1 : 0).run();
+    if (!r.meta.changes) return err('Only the person who added this, or the admin, can delete it', 403);
+    // Deleting a claimed "whoever pays" entry reopens that month's bill.
+    await db.prepare(`UPDATE bill_dues SET status='open', paid_by=NULL, expense_id=NULL, last_nudge=? WHERE expense_id=? AND flat_id=?`).bind(now(), m[1], me.flat_id).run();
+    return J({ ok: true });
+  }
+
+  // "Whoever pays" monthly bills: claim (I paid) or skip this month's due. Flatmates only.
+  if ((m = p.match(/^\/api\/dues\/(\w+)\/(claim|skip)$/)) && M === 'POST') {
+    const no = residentsOnly(); if (no) return no;
+    if (m[2] === 'skip') {
+      const r = await db.prepare(`UPDATE bill_dues SET status='skipped' WHERE id=? AND flat_id=? AND status='open'`).bind(m[1], me.flat_id).run();
+      return r.meta.changes ? J({ ok: true }) : err('This bill is already sorted for this month', 409);
+    }
+    const res = residentIds(members);
+    const payer = res.includes(body.paidBy) ? body.paidBy : me.id;
+    const r = await claimDue(env, m[1], me.flat_id, payer, toPaise(body.amount), me.id);
+    if (r.error) return err(r.error, r.status);
+    ctx.waitUntil(notifyFlat(env, me.flat_id, `✅ ${esc(nameOf(payer))} paid <b>${money(env, r.amount)}</b> for ${esc(r.description)}`, me.id));
+    return J({ ok: true });
   }
 
   // Monthly bills (flatmates only)
@@ -265,17 +296,21 @@ async function api(req, env, ctx, url) {
     const amount = toPaise(body.amount), description = clean(body.description, 60), day = Math.round(Number(body.day));
     if (!amount || !description || !(day >= 1 && day <= 31)) return err('Enter a name, an amount and a day between 1 and 31');
     const res = residentIds(members);
+    const mode = body.mode === 'claim' ? 'claim' : 'fixed'; // claim = whoever pays that month; paid_by is then just the creator
     const paidBy = res.includes(body.paidBy) ? body.paidBy : me.id;
     const ids = Array.isArray(body.split) ? body.split.filter(id => res.includes(id)) : [];
     const split = ids.length && ids.length < res.length ? JSON.stringify(ids) : null; // null = every flatmate, incl. future ones
-    await db.prepare(`INSERT INTO recurring (id, flat_id, description, amount, paid_by, split, day, last_run, created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
-      .bind(randHex(8), me.flat_id, description, amount, paidBy, split, day, body.addNow ? null : localMonth(env).ym, now()).run();
+    await db.prepare(`INSERT INTO recurring (id, flat_id, description, amount, paid_by, split, day, last_run, mode, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+      .bind(randHex(8), me.flat_id, description, amount, mode === 'claim' ? me.id : paidBy, split, day, body.addNow ? null : localMonth(env).ym, mode, now()).run();
     if (body.addNow) await runRecurring(env, me.flat_id);
     return J({ ok: true });
   }
   if ((m = p.match(/^\/api\/recurring\/(\w+)$/)) && M === 'DELETE') {
     const no = residentsOnly(); if (no) return no;
-    await db.prepare(`UPDATE recurring SET active=0 WHERE id=? AND flat_id=?`).bind(m[1], me.flat_id).run();
+    await db.batch([
+      db.prepare(`UPDATE recurring SET active=0 WHERE id=? AND flat_id=?`).bind(m[1], me.flat_id),
+      db.prepare(`UPDATE bill_dues SET status='skipped' WHERE recurring_id=? AND flat_id=? AND status='open'`).bind(m[1], me.flat_id),
+    ]);
     return J({ ok: true });
   }
 
@@ -391,6 +426,36 @@ async function approve(db, pendingId, flatId, asPlaceholder) {
   return { ok: true, linked: ph.name };
 }
 
+// Claim a "whoever pays" due: mark it paid and create the expense in ONE transaction. The UPDATE only
+// matches an open due, and the INSERT only runs if that UPDATE took effect, so two people tapping
+// "I paid" at once can never both win or create two entries.
+async function claimDue(env, dueId, flatId, payerId, amount, byId) {
+  const db = env.DB;
+  const due = await db.prepare(`SELECT d.*, r.split AS rsplit FROM bill_dues d JOIN recurring r ON r.id=d.recurring_id WHERE d.id=? AND d.flat_id=?`).bind(dueId, flatId).first();
+  if (!due) return { error: 'This bill is no longer due', status: 404 };
+  const taken = async () => {
+    const d = await db.prepare(`SELECT d.status, m.name FROM bill_dues d LEFT JOIN members m ON m.id=d.paid_by WHERE d.id=?`).bind(dueId).first();
+    return { error: d?.status === 'skipped' ? 'This bill was skipped this month' : `${d?.name || 'Someone'} already marked it paid`, status: 409 };
+  };
+  if (due.status !== 'open') return taken();
+  const res = residentIds(await flatMembers(db, flatId));
+  const want = due.rsplit ? JSON.parse(due.rsplit).filter(id => res.includes(id)) : res;
+  if (!want.length) return { error: 'Nobody left to split this bill with', status: 400 };
+  const amt = amount || due.amount, eid = randHex(8);
+  const [u, ins] = await db.batch([
+    db.prepare(`UPDATE bill_dues SET status='paid', paid_by=?, amount=?, expense_id=? WHERE id=? AND status='open'`).bind(payerId, amt, eid, dueId),
+    db.prepare(`INSERT OR IGNORE INTO expenses (id, flat_id, kind, description, amount, paid_by, split, created_by, source, ext_id, created_at)
+                SELECT ?,?,'expense',?,?,?,?,?,'auto',?,? WHERE EXISTS (SELECT 1 FROM bill_dues WHERE id=? AND expense_id=?)`)
+      .bind(eid, flatId, due.description, amt, payerId, JSON.stringify(equalShares(amt, want)), byId, `rec:${due.recurring_id}:${due.ym}`, now(), dueId, eid),
+  ]);
+  if (!u.meta.changes) return taken();
+  if (!ins.meta.changes) { // an entry for this bill-month already exists; undo the claim rather than leave it half-done
+    await db.prepare(`UPDATE bill_dues SET status='open', paid_by=NULL, expense_id=NULL WHERE id=? AND expense_id=?`).bind(dueId, eid).run();
+    return { error: "This month's entry already exists. Delete it from Activity first.", status: 409 };
+  }
+  return { ok: true, amount: amt, description: due.description };
+}
+
 // ---------- backup & restore ----------
 async function snapshot(db, flatId) {
   const q = (sql, ...b) => db.prepare(sql).bind(...b).all().then(r => r.results);
@@ -398,7 +463,7 @@ async function snapshot(db, flatId) {
     db.prepare(`SELECT id, name, invite_code, simplify, created_at FROM flats WHERE id=?`).bind(flatId).first(),
     q(`SELECT id, name, role, status, host_id, expires_at, created_at FROM members WHERE flat_id=? AND status IN ('approved','placeholder')`, flatId),
     q(`SELECT id, kind, description, amount, paid_by, split, created_by, source, ext_id, created_at FROM expenses WHERE flat_id=? AND deleted=0 ORDER BY created_at`, flatId),
-    q(`SELECT description, amount, paid_by, split, day, last_run FROM recurring WHERE flat_id=? AND active=1`, flatId),
+    q(`SELECT description, amount, paid_by, split, day, last_run, mode FROM recurring WHERE flat_id=? AND active=1`, flatId),
   ]);
   return { app: 'its-settled', version: 1, exported_at: new Date().toISOString(), flat, members,
     expenses: expenses.map(e => ({ ...e, split: JSON.parse(e.split) })), recurring: recurring.map(r => ({ ...r, split: r.split ? JSON.parse(r.split) : null })) };
@@ -407,7 +472,7 @@ async function snapshot(db, flatId) {
 // Replace this flat's entries and monthly bills with a snapshot, as one transaction. People are matched
 // by id, then by name; anyone missing comes back as "not joined yet". Current logins are untouched.
 async function restore(db, flatId, snap) {
-  if (!snap?.app === 'its-settled' || !Array.isArray(snap.members) || !Array.isArray(snap.expenses)) throw new Error("That file isn't an It's Settled backup");
+  if (snap?.app !== 'its-settled' || !Array.isArray(snap.members) || !Array.isArray(snap.expenses)) throw new Error("That file isn't an It's Settled backup");
   const cur = (await db.prepare(`SELECT id, name FROM members WHERE flat_id=? AND status IN ('approved','placeholder')`).bind(flatId).all()).results;
   const idMap = {}, newPeople = [];
   for (const m of snap.members) {
@@ -423,15 +488,17 @@ async function restore(db, flatId, snap) {
   const rec = (snap.recurring || []).filter(r => idMap[r.paid_by]).map(r => ({
     id: randHex(8), description: clean(r.description, 60), amount: Math.round(r.amount), paid_by: idMap[r.paid_by],
     split: r.split ? JSON.stringify(r.split.map(id => idMap[id]).filter(Boolean)) : null, day: r.day, last_run: r.last_run ?? null,
+    mode: r.mode === 'claim' ? 'claim' : 'fixed',
   }));
   await db.batch([
     ...(newPeople.length ? [bulkPlaceholders(db, flatId, newPeople)] : []),
     db.prepare(`DELETE FROM expenses WHERE flat_id=?`).bind(flatId),
     db.prepare(`DELETE FROM recurring WHERE flat_id=?`).bind(flatId),
+    db.prepare(`DELETE FROM bill_dues WHERE flat_id=?`).bind(flatId),
     bulkExpenses(db, expenses),
-    db.prepare(`INSERT INTO recurring (id, flat_id, description, amount, paid_by, split, day, last_run, created_at)
+    db.prepare(`INSERT INTO recurring (id, flat_id, description, amount, paid_by, split, day, last_run, mode, created_at)
       SELECT json_extract(value,'$.id'), ?, json_extract(value,'$.description'), json_extract(value,'$.amount'), json_extract(value,'$.paid_by'),
-             json_extract(value,'$.split'), json_extract(value,'$.day'), json_extract(value,'$.last_run'), ? FROM json_each(?)`).bind(flatId, now(), JSON.stringify(rec)),
+             json_extract(value,'$.split'), json_extract(value,'$.day'), json_extract(value,'$.last_run'), json_extract(value,'$.mode'), ? FROM json_each(?)`).bind(flatId, now(), JSON.stringify(rec)),
   ]);
   return { ok: true, expenses: expenses.length, recurring: rec.length, people_added: newPeople.length };
 }
@@ -457,6 +524,22 @@ async function backupAll(env) {
 async function telegram(env, ctx, secret, u) {
   if (!env.TELEGRAM_WEBHOOK_SECRET || secret !== env.TELEGRAM_WEBHOOK_SECRET) return err('Forbidden', 403);
   const db = env.DB;
+
+  if (u.callback_query?.data?.startsWith('pd:')) { // "I paid" on a whoever-pays monthly bill
+    const cq = u.callback_query, dueId = cq.data.slice(3);
+    const due = await db.prepare(`SELECT flat_id FROM bill_dues WHERE id=?`).bind(dueId).first();
+    const who = due && await db.prepare(`SELECT id, name FROM members WHERE flat_id=? AND tg_chat_id=? AND status='approved' AND role<>'guest'`)
+      .bind(due.flat_id, String(cq.from.id)).first();
+    let note = 'Not allowed';
+    if (who) {
+      const r = await claimDue(env, dueId, due.flat_id, who.id, 0, who.id);
+      note = r.error || `✅ ${who.name} paid ${money(env, r.amount)}`;
+      if (!r.error) ctx.waitUntil(notifyFlat(env, due.flat_id, `✅ ${esc(who.name)} paid <b>${money(env, r.amount)}</b> for ${esc(r.description)}`, who.id));
+    }
+    await tg(env, 'answerCallbackQuery', { callback_query_id: cq.id, text: note });
+    if (who && cq.message) await tg(env, 'editMessageText', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, text: `${cq.message.text}\n\n${note}` });
+    return J({ ok: true });
+  }
 
   if (u.callback_query) { // Approve / Reject buttons on join requests
     const cq = u.callback_query, [act, mid] = String(cq.data || '').split(':');
@@ -537,6 +620,17 @@ async function runRecurring(env, onlyFlat) {
     .bind(...(onlyFlat ? [ym, onlyFlat] : [ym])).all();
   for (const r of results) {
     if (Math.min(r.day, daysInMonth) > day) continue;
+    if (r.mode === 'claim') { // whoever pays: open a due (amount = last month's, else the bill's) and ask who paid
+      const last = await db.prepare(`SELECT amount FROM bill_dues WHERE recurring_id=? AND status='paid' ORDER BY ym DESC LIMIT 1`).bind(r.id).first();
+      await db.batch([
+        db.prepare(`INSERT OR IGNORE INTO bill_dues (id, flat_id, recurring_id, ym, description, amount, last_nudge, created_at) VALUES (?,?,?,?,?,?,?,?)`)
+          .bind(randHex(8), r.flat_id, r.id, ym, `${r.description} · ${label}`, last?.amount || r.amount, now(), now()),
+        db.prepare(`UPDATE recurring SET last_run=? WHERE id=?`).bind(ym, r.id),
+      ]);
+      const due = await db.prepare(`SELECT * FROM bill_dues WHERE recurring_id=? AND ym=?`).bind(r.id, ym).first();
+      if (due?.status === 'open') await askWhoPaid(env, due, false);
+      continue;
+    }
     const ms = await flatMembers(db, r.flat_id), res = residentIds(ms);
     const want = r.split ? JSON.parse(r.split).filter(id => res.includes(id)) : res;
     if (!want.length || !res.includes(r.paid_by)) continue;
@@ -547,6 +641,17 @@ async function runRecurring(env, onlyFlat) {
     ]);
     await notifyFlat(env, r.flat_id, `🔁 Monthly bill added: <b>${money(env, r.amount)}</b> · ${esc(r.description)} (paid by ${esc(ms.find(m => m.id === r.paid_by)?.name || '?')})`);
   }
+  if (onlyFlat) return;
+  // Unclaimed bills: remind every 2 days until someone taps "I paid" (or skips it).
+  const stale = (await db.prepare(`SELECT * FROM bill_dues WHERE status='open' AND (last_nudge IS NULL OR last_nudge<=?)`).bind(now() - NUDGE_MS).all()).results;
+  for (const d of stale) {
+    await askWhoPaid(env, d, true);
+    await db.prepare(`UPDATE bill_dues SET last_nudge=? WHERE id=?`).bind(now(), d.id).run();
+  }
+}
+function askWhoPaid(env, due, reminder) {
+  return notifyFlat(env, due.flat_id, `${reminder ? '⏰ Still open' : '🔔 Due today'}: <b>${esc(due.description)}</b> · ${money(env, due.amount)}. Who paid?`,
+    '', { inline_keyboard: [[{ text: '✅ I paid', callback_data: 'pd:' + due.id }]] });
 }
 
 // ---------- static assets ----------

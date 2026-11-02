@@ -47,6 +47,15 @@ A flatmate expense splitter, deployed as ONE Cloudflare Worker with a D1 (SQLite
   - Flat-wide Telegram pings never go to guests (`notifyFlat` filters `role<>'guest'`).
 - **Placeholders** come from imports or restores ("not joined yet"). The admin links a joiner to one when approving (`approve(..., as)`), which moves the login onto the placeholder's id.
 
+## Monthly bills
+
+- `recurring.mode`: `fixed` (one regular payer; the daily run adds the entry) or `claim` ("whoever pays that month").
+- A `claim` bill creates one `bill_dues` row per month (unique on `recurring_id, ym`). Flatmates see a "Who paid?" card and Telegram gets an **I paid** button (`pd:<dueId>`).
+- `claimDue()` marks the due paid and inserts the expense in ONE batch; the INSERT is conditional on the UPDATE, so simultaneous claims can't both win. Its amount defaults to the last paid amount for that bill.
+- Deleting a claimed entry reopens the due (and nulls the entry's `rec:` ext_id so it can be recreated). Skipping sets `status='skipped'`.
+- Unclaimed dues are re-announced by the daily run every 2 days (`NUDGE_MS`, a little under 48h).
+- Guests never see or claim dues.
+
 ## Rules for changes
 
 - **Schema:** append a new array to `MIGRATIONS` in `worker.js`; never edit a shipped one. ALTERs are not idempotent, so keep each migration small. Update `snapshot()`/`restore()` if the new column belongs in backups.
