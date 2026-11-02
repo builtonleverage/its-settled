@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#eef1ec">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>__APP_NAME__</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one phone-width column; sticky flat header, bottom tab bar with a central add button, bottom sheets for every task. */
+:root{--bg:#eef1ec;--card:#fbfcfa;--ink:#18201c;--muted:#5f6a63;--faint:#8b958e;--line:#dde3dc;--chip:#e3e8e2;
+  --accent:#1f6b55;--accent-ink:#fff;--accent-soft:#d6e9e0;--pos:#1f6b55;--neg:#b0432c;--neg-soft:#f5e1da;--warn:#865b0d;--warn-soft:#f3e8cf;
+  --scrim:rgba(8,14,11,.45);--sh:0 1px 2px rgba(20,35,28,.05),0 6px 20px rgba(20,35,28,.06);
+  --display:'Bricolage Grotesque',Figtree,system-ui,sans-serif;--body:Figtree,system-ui,-apple-system,'Segoe UI',sans-serif;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f1311;--card:#171d1a;--ink:#e9efea;--muted:#a0aca4;--faint:#727d76;--line:#26302b;--chip:#202824;
+  --accent:#5cc199;--accent-ink:#0b1712;--accent-soft:#173328;--pos:#6fd0a6;--neg:#f08b70;--neg-soft:#3a201a;--warn:#e2b45a;--warn-soft:#33281a;--scrim:rgba(0,0,0,.6);--sh:none;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#0f1311;--card:#171d1a;--ink:#e9efea;--muted:#a0aca4;--faint:#727d76;--line:#26302b;--chip:#202824;
+  --accent:#5cc199;--accent-ink:#0b1712;--accent-soft:#173328;--pos:#6fd0a6;--neg:#f08b70;--neg-soft:#3a201a;--warn:#e2b45a;--warn-soft:#33281a;--scrim:rgba(0,0,0,.6);--sh:none;color-scheme:dark}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);-webkit-font-smoothing:antialiased;min-height:100dvh}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;-webkit-tap-highlight-color:transparent}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:520px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 calc(112px + env(safe-area-inset-bottom,0px))}
+h1,h2,h3,.num{font-family:var(--display);letter-spacing:-.01em;text-wrap:balance}
+.muted{color:var(--muted)} .faint{color:var(--faint)} .pos{color:var(--pos)} .neg{color:var(--neg)}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 0 14px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5}
+.top h1{font-size:22px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 10px;border-radius:99px;background:var(--chip);color:var(--muted);white-space:nowrap}
+.pill i{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.pill.off{background:var(--warn-soft);color:var(--warn)} .pill.off i{background:var(--warn)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:var(--sh);margin-bottom:12px}
+.hero{padding:20px 18px}
+.hero .lbl{font-size:13px;color:var(--muted);font-weight:600}
+.hero .big{font-size:40px;font-weight:700;line-height:1.1;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+.sec{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:22px 2px 8px}
+.sec h2{font-size:16px;font-weight:700}
+.row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.ico{width:38px;height:38px;border-radius:12px;background:var(--chip);display:grid;place-items:center;font-size:18px;font-weight:700;flex:none}
+.grow{flex:1;min-width:0}
+.t1{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t2{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wrapt{white-space:normal}
+.amt{text-align:right;flex:none}
+.amt .a1{font-weight:600;font-variant-numeric:tabular-nums}
+.amt .a2{font-size:12px}
+.tap{width:100%;text-align:left}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:46px;padding:0 18px;border-radius:14px;font-weight:600;background:var(--accent);color:var(--accent-ink);text-decoration:none;white-space:nowrap}
+.btn.sm{height:34px;padding:0 12px;border-radius:10px;font-size:13px}
+.btn.ghost{background:var(--chip);color:var(--ink)}
+.btn.danger{background:var(--neg-soft);color:var(--neg)}
+.btn.block{width:100%}
+.btn:disabled{opacity:.5}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.chip{height:36px;padding:0 13px;border-radius:99px;background:var(--chip);font-size:14px;font-weight:500;border:1.5px solid transparent}
+.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+.chips .div{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:0 2px 0 6px}
+label.f{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:14px 0 6px}
+.in{width:100%;height:48px;border-radius:13px;border:1px solid var(--line);background:var(--bg);padding:0 14px;font-size:16px;outline:none}
+.in:focus{border-color:var(--accent)}
+.in.huge{height:68px;font-size:34px;font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums}
+.nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);z-index:10}
+.nav .in-nav{max-width:520px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr 76px 1fr 1fr;align-items:center;height:64px}
+.nav button{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--faint)}
+.nav button.on{color:var(--ink)}
+.nav button svg{width:22px;height:22px}
+.nav .fab{width:56px;height:56px;border-radius:18px;background:var(--accent);color:var(--accent-ink);margin:-26px auto 0;box-shadow:0 6px 18px rgba(31,107,85,.35);justify-content:center}
+.nav .fab svg{width:26px;height:26px}
+.scrim,.ask{position:fixed;inset:0;background:var(--scrim);z-index:20;display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
+.ask{z-index:30}
+.sheet{background:var(--card);width:100%;max-width:520px;max-height:92dvh;overflow:auto;border-radius:22px 22px 0 0;padding:10px max(18px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px));animation:up .2s cubic-bezier(.2,.8,.2,1)}
+.grab{width:40px;height:4px;border-radius:4px;background:var(--line);margin:0 auto 12px}
+.sheet h3{font-size:20px;font-weight:700;margin-bottom:4px}
+@keyframes up{from{transform:translateY(40px);opacity:.4}} @keyframes fade{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:12px;font-size:14px;font-weight:600;z-index:40;max-width:calc(100% - 32px);animation:fade .15s}
+.banner{display:flex;gap:10px;align-items:center;background:var(--warn-soft);color:var(--warn);border-radius:14px;padding:10px 12px;font-size:13px;font-weight:600;margin-bottom:12px}
+.banner.info{background:var(--accent-soft);color:var(--ink)}
+.code{font-family:var(--display);font-size:28px;font-weight:700;letter-spacing:.12em}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--chip);color:var(--muted);margin-left:6px;vertical-align:1px}
+.badge.acc{background:var(--accent-soft);color:var(--accent)}
+.badge.warn{background:var(--warn-soft);color:var(--warn)}
+.empty{text-align:center;padding:26px 10px;color:var(--muted)}
+.land{padding-top:48px}
+.logo{font-family:var(--display);font-size:42px;font-weight:700;letter-spacing:-.03em;line-height:1}
+.logo span{color:var(--accent)}
+.lead{font-size:17px;color:var(--muted);margin:10px 0 26px;max-width:32ch}
+.tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--chip);border-radius:13px;padding:4px;margin-bottom:4px}
+.tabs button{height:38px;border-radius:10px;font-weight:600;color:var(--muted)}
+.tabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--sh)}
+.mono{font-variant-numeric:tabular-nums}
+.sel{height:40px;border-radius:10px;border:1px solid var(--line);background:var(--bg);padding:0 10px;max-width:58%}
+.toggle{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:14px}
+.toggle input{width:20px;height:20px;accent-color:var(--accent)}
+.switch{appearance:none;-webkit-appearance:none;width:48px;height:28px;border-radius:99px;background:var(--line);position:relative;flex:none;cursor:pointer;transition:background .15s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .15s}
+.switch:checked{background:var(--accent)} .switch:checked::after{transform:translateX(20px)}
+.switch:disabled{opacity:.6;cursor:default}
+.spin{width:18px;height:18px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp 1s linear infinite;display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="layer"></div>
+<script>
+// =====================================================================================
+// It's Settled — single-page app. See CLAUDE.md for the architecture and the rules.
+// Sections: CONFIG · CORE (shared with server) · HELPERS · STATE & SYNC · SELECTORS ·
+//           SCREENS · SHEETS · DIALOGS · EVENTS · DEMO BACKEND · BOOT
+// =====================================================================================
+
+// ---------- CONFIG (injected by the Worker; defaults keep the file usable on its own) ----------
+/*__CONFIG__*/
+const C = Object.assign({ name: "It's Settled", currency: 'INR', locale: 'en-IN', bot: null }, typeof CONFIG !== 'undefined' ? CONFIG : {});
+const FORCE_DEMO = false; // the standalone demo build flips this to true
+const DEMO = FORCE_DEMO || /^\/demo/.test(location.pathname);
+const K = DEMO ? { cache: 'is_demo_cache', q: 'is_demo_q', state: 'is_demo_state' } : { cache: 'is_cache', q: 'is_q', token: 'is_token' };
+
+// ---------- CORE: money math + CSV parsing, inlined from src/core.js ----------
+/*__CORE__*/
+
+// ---------- HELPERS ----------
+const ls = {
+  get(k, d = null) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const NF = [0, 2].map(d => new Intl.NumberFormat(C.locale, { style: 'currency', currency: C.currency, minimumFractionDigits: d, maximumFractionDigits: 2 }));
+const fmt = p => NF[p % 100 ? 1 : 0].format(Math.abs(p) / 100);
+const SYMBOL = NF[0].formatToParts(0).find(x => x.type === 'currency')?.value || '';
+const day = t => new Date(t).toLocaleDateString(C.locale, { day: 'numeric', month: 'short' });
+const dayLong = t => new Date(t).toLocaleDateString(C.locale, { weekday: 'short', day: 'numeric', month: 'short' });
+const monthKey = t => new Date(t).toLocaleDateString(C.locale, { month: 'long', year: 'numeric' });
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 24);
+const ord = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
+const endOfDay = addDays => { const d = new Date(); d.setHours(23, 59, 59, 999); d.setDate(d.getDate() + addDays); return d.getTime(); };
+const waHref = text => 'https://wa.me/?text=' + encodeURIComponent(text);
+const loginLink = token => location.origin + '/#login=' + token;
+const ICONS = [[/rent/i, '🏠'], [/maid|clean|bai/i, '🧹'], [/cook|chef|tiffin/i, '🍳'], [/wifi|internet|broadband|fiber/i, '📶'],
+  [/electric|power|bescom|mgw|current/i, '💡'], [/grocer|milk|egg|veg|fruit|blinkit|zepto|instamart|bigbasket/i, '🛒'], [/mainten|society|repair|plumb/i, '🛠️'],
+  [/gas|cylinder|lpg/i, '🔥'], [/water|bisleri/i, '💧'], [/gym/i, '🏋️'], [/dinner|lunch|food|pizza|swiggy|zomato|cafe/i, '🍽️'], [/cab|uber|ola|auto|metro|fuel|petrol/i, '🚕'],
+  [/movie|party|outing|trip|game|mystery/i, '🎉']];
+const icon = e => e.kind === 'settle' ? '🤝' : (ICONS.find(([r]) => r.test(e.description)) || [0, '🧾'])[1];
+const QUICK = ['Groceries', 'Milk', 'Electricity', 'Wifi', 'Gas', 'Water', 'Maid', 'Cook', 'Rent', 'Maintenance', 'Dinner', 'Cab'];
+const I = {
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>',
+  bills: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  flat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.4 3-5.5 6-5.5s5.4 2.1 6 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.6c2.6.1 4.4 1.9 5 5.4"/></svg>',
+  settle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>',
+};
+
+// ---------- STATE & SYNC ----------
+let D = ls.get(K.cache);   // last server snapshot (renders instantly on open)
+let Q = ls.get(K.q, []);    // offline outbox: [{type:'add', body} | {type:'del', id}]
+const UI = { tab: 'home', sheet: null, syncing: false, online: navigator.onLine, landTab: 'join', imp: null };
+const token = () => ls.get(K.token);
+
+async function server(method, path, body) {
+  if (DEMO) return demoServer(method, path, body);
+  let r;
+  try {
+    r = await fetch(path, { method, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + (token() || '') }, body: body ? JSON.stringify(body) : undefined });
+  } catch { const x = new Error("You're offline"); x.offline = true; throw x; }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { const x = new Error(d.error || 'Something went wrong. Try again.'); x.status = r.status; x.offline = r.status >= 500; throw x; }
+  return d;
+}
+let refreshing = null;
+function refresh() {
+  if (!DEMO && !token()) { D = null; render(); return Promise.resolve(); }
+  return refreshing ||= (async () => {
+    try { D = await server('GET', '/api/me'); ls.set(K.cache, D); UI.online = true; }
+    catch (e) {
+      if (e.status === 401) { signOut(); toast('Signed out. Ask your admin for a new login link.'); }
+      else if (e.offline) UI.online = false;
+    }
+    refreshing = null; render();
+  })();
+}
+// Online-only actions (settings, guests, admin). Everyday entries go through the outbox instead.
+async function act(method, path, body, okMsg) {
+  try { const r = await server(method, path, body); if (okMsg) toast(okMsg); await refresh(); return r; }
+  catch (e) { toast(e.offline ? "You're offline. Try again when you're back online." : e.message); throw e; }
+}
+// Outbox: show instantly, sync in order, retry when back online. The cid makes retries safe.
+function enqueue(op) { Q.push(op); ls.set(K.q, Q); render(); flush(); }
+async function flush() {
+  if (UI.syncing || !Q.length) return;
+  UI.syncing = true; render();
+  let synced = false;
+  while (Q.length) {
+    const op = Q[0];
+    try {
+      if (op.type === 'add') await server('POST', '/api/expenses', op.body);
+      else if (op.type === 'del') await server('DELETE', '/api/expenses/' + op.id);
+      UI.online = true;
+    } catch (e) {
+      if (e.offline) { UI.online = false; break; }
+      toast((op.body?.description || 'Entry') + ': ' + e.message);
+    }
+    Q.shift(); ls.set(K.q, Q); synced = true;
+  }
+  UI.syncing = false;
+  if (synced) await refresh(); else render();
+}
+// Server snapshot + queued changes = what the user sees.
+function view() {
+  if (!D || !D.members) return D;
+  const v = { ...D, expenses: [...D.expenses] };
+  for (const op of Q) {
+    if (op.type === 'add') {
+      const b = op.body, amount = toPaise(b.amount);
+      v.expenses.push({ id: 'tmp_' + b.cid, kind: b.kind || 'expense', description: b.description || (b.kind === 'settle' ? 'Settle up' : 'Expense'),
+        amount, paid_by: b.paidBy, split: equalShares(amount, b.split), created_by: D.me.id, created_at: b.at, pending: true });
+    } else if (op.type === 'del') v.expenses = v.expenses.filter(e => e.id !== op.id);
+  }
+  v.expenses.sort((a, b) => b.created_at - a.created_at);
+  return v;
+}
+window.addEventListener('online', () => { UI.online = true; flush(); refresh(); });
+window.addEventListener('offline', () => { UI.online = false; render(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { flush(); refresh(); } });
+setInterval(() => { if (document.visibilityState === 'visible') { flush(); refresh(); } }, DEMO ? 60000 : 30000);
+function signOut() { ls.set(K.token, null); ls.set(K.cache, null); ls.set(K.q, null); D = null; Q = []; UI.sheet = null; $layer.innerHTML = ''; render(); }
+
+// ---------- SELECTORS ----------
+const counted = v => v.members.filter(m => m.status === 'approved' || m.status === 'placeholder'); // everyone with a balance
+const residents = v => counted(v).filter(m => m.role !== 'guest');
+const isGuest = m => m?.role === 'guest';
+const activeGuest = m => isGuest(m) && (!m.expires_at || m.expires_at > Date.now());
+const amGuest = v => isGuest(v.me);
+const names = v => Object.fromEntries(v.members.map(m => [m.id, m.id === v.me.id ? 'You' : m.name]));
+const nets = v => netBalances(v.expenses);
+const planOf = (v, simplify = !!v.flat.simplify) => settlePlan(counted(v), v.expenses, simplify)
+  .filter(s => !amGuest(v) || s.from === v.me.id || s.to === v.me.id);
+const asYou = (v, list) => list.map(m => ({ ...m, name: m.id === v.me.id ? 'You' : m.name }));
+const hostId = v => v.me.host_id && v.members.some(m => m.id === v.me.host_id) ? v.me.host_id : null;
+// Who can be picked in the add / settle sheets. Guests appear after flatmates, off by default.
+function pickers(v) {
+  if (amGuest(v)) return { main: asYou(v, [v.me, ...residents(v)]), extra: [] };
+  const net = nets(v);
+  return { main: asYou(v, residents(v)), extra: counted(v).filter(m => isGuest(m) && (activeGuest(m) || Math.abs(net[m.id] || 0) >= 100)) };
+}
+// Most-used descriptions first, so common entries are one tap.
+function frequent(v) {
+  const count = {};
+  for (const e of v.expenses.slice(0, 300)) {
+    if (e.kind !== 'expense' || e.source === 'auto') continue;
+    const d = e.description.replace(/\s*·.*$/, '').trim();
+    if (!d || d.length > 18) continue;
+    const k = d.toLowerCase(); (count[k] ||= [d, 0])[1]++;
+  }
+  const out = [], seen = new Set();
+  for (const d of [...Object.values(count).sort((a, b) => b[1] - a[1]).map(x => x[0]), ...QUICK]) {
+    if (!seen.has(d.toLowerCase())) { seen.add(d.toLowerCase()); out.push(d); }
+  }
+  return out.slice(0, 10);
+}
+
+// ---------- SCREENS ----------
+const $app = document.getElementById('app'), $layer = document.getElementById('layer');
+function render() {
+  const v = view();
+  if (!DEMO && !token()) { $app.innerHTML = landing(); renderSheet(); return; }
+  if (!v) { $app.innerHTML = `<div class="wrap"><div class="empty" style="padding-top:40vh"><span class="spin" aria-label="Loading"></span></div></div>`; renderSheet(); return; }
+  if (v.me.status === 'pending') { $app.innerHTML = pendingScreen(v); renderSheet(); return; }
+  if (v.me.status === 'rejected') { $app.innerHTML = `<div class="wrap land"><h1>Request declined</h1><p class="lead">The admin of ${esc(v.flat.name)} didn't approve this request.</p><button class="btn" data-a="signout">Start over</button></div>`; renderSheet(); return; }
+  if (amGuest(v) && UI.tab === 'bills') UI.tab = 'home';
+  const body = UI.tab === 'bills' ? billsTab(v) : UI.tab === 'flat' ? (amGuest(v) ? youTab(v) : flatTab(v)) : homeTab(v);
+  $app.innerHTML = `<div class="wrap">${topBar(v)}${banners(v)}${body}</div>${nav(v)}`;
+  renderSheet();
+}
+function topBar(v) {
+  const n = Q.length;
+  const pill = UI.syncing ? `<span class="pill"><span class="spin" style="width:10px;height:10px"></span>Syncing</span>`
+    : !UI.online ? `<span class="pill off"><i></i>Offline${n ? ` · ${n} queued` : ''}</span>`
+    : n ? `<span class="pill off"><i></i>${n} to sync</span>` : `<span class="pill"><i></i>Up to date</span>`;
+  return `<div class="top"><h1>${esc(v.flat.name)}</h1>${pill}</div>`;
+}
+function banners(v) {
+  let h = '';
+  if (DEMO) h += `<div class="banner info"><span class="grow">${amGuest(v) ? `Demo: you're seeing what guest <b>${esc(v.me.name)}</b> sees.` : 'Demo flat. Nothing leaves this browser. Try importing a Tricount CSV from the Flat tab.'}</span>
+    ${amGuest(v) ? '<button class="btn sm" data-a="demo-view" data-id="">Back to flatmate</button>' : '<button class="btn sm ghost" data-a="demo-reset">Reset</button>'}</div>`;
+  if (amGuest(v)) h += v.me.expired
+    ? `<div class="banner"><span class="grow">Your guest access ended. You can still see what's left to settle.</span></div>`
+    : `<div class="banner info"><span class="grow">Guest${v.flat.host ? ` of ${esc(v.flat.host)}` : ''}${v.me.expires_at ? ` until ${dayLong(v.me.expires_at)}` : ''}. You see only entries you're part of.</span></div>`;
+  return h;
+}
+function nav(v) {
+  const b = (t, label, ic) => `<button class="${UI.tab === t ? 'on' : ''}" data-a="tab" data-t="${t}">${ic}${label}</button>`;
+  return `<nav class="nav"><div class="in-nav">${b('home', 'Home', I.home)}${amGuest(v) ? '<span></span>' : b('bills', 'Monthly', I.bills)}
+    <button class="fab" data-a="add" aria-label="Add expense">${I.plus}</button>
+    <button data-a="settle-any">${I.settle}Settle</button>${b('flat', amGuest(v) ? 'You' : 'Flat', I.flat)}</div></nav>`;
+}
+
+function homeTab(v) {
+  const nm = names(v), mine = nets(v)[v.me.id] || 0, plan = planOf(v);
+  const reqs = v.me.role === 'admin' ? v.members.filter(m => m.status === 'pending') : [];
+  let h = reqs.map(m => `<div class="card" style="display:flex;align-items:center;gap:12px"><div class="ico">🙋</div><div class="grow"><div class="t1">${esc(m.name)}</div><div class="t2">wants to join</div></div>
+    <button class="btn sm ghost" data-a="reject" data-id="${m.id}">Reject</button><button class="btn sm" data-a="approve" data-id="${m.id}">Approve</button></div>`).join('');
+  h += `<div class="card hero"><div class="lbl">${mine >= 100 ? 'Overall, you get back' : mine <= -100 ? 'Overall, you owe' : 'Your balance'}</div>
+    <div class="big ${mine >= 100 ? 'pos' : mine <= -100 ? 'neg' : ''}">${Math.abs(mine) < 100 ? 'All settled' : fmt(mine)}</div>
+    <div class="t2">${amGuest(v) ? `${v.expenses.length} shared ${v.expenses.length === 1 ? 'entry' : 'entries'}` : `${residents(v).length} flatmates · ${v.expenses.length} entries`}</div></div>`;
+  if (plan.length) {
+    const guestIds = new Set(counted(v).filter(isGuest).map(m => m.id));
+    h += `<div class="sec"><h2>Settle up</h2><span class="t2">${amGuest(v) ? 'directly' : v.flat.simplify ? 'simplified' : 'direct debts'}</span></div><div class="card">` + plan.map(s => {
+      const who = s.from === v.me.id ? '<span class="neg">You pay</span>' : s.to === v.me.id ? '<span class="pos">You receive</span>'
+        : (guestIds.has(s.from) || guestIds.has(s.to)) ? 'Guest, settled directly' : 'Between them';
+      return `<div class="row"><div class="grow"><div class="t1">${esc(nm[s.from] || '?')} → ${esc(nm[s.to] || '?')}</div><div class="t2">${who}</div></div>
+      <div class="amt"><div class="a1">${fmt(s.amount)}</div></div><button class="btn sm ghost" data-a="settle" data-from="${s.from}" data-to="${s.to}" data-amt="${s.amount}">Paid</button></div>`;
+    }).join('') + `</div>`;
+  }
+  h += `<div class="sec"><h2>Activity</h2></div>`;
+  if (!v.expenses.length) h += `<div class="card empty">No entries yet.<br>Tap <b>+</b> to add the first one.</div>`;
+  let cur = '';
+  for (const e of v.expenses.slice(0, 300)) {
+    const mk = monthKey(e.created_at);
+    if (mk !== cur) { if (cur) h += `</div>`; h += `<div class="t2" style="margin:14px 4px 6px;font-weight:700">${mk}</div><div class="card">`; cur = mk; }
+    h += expenseRow(e, v, nm);
+  }
+  if (cur) h += `</div>`;
+  return h;
+}
+function expenseRow(e, v, nm) {
+  const sh = sharesOf(e), my = (sh.find(([id]) => id === v.me.id) || [0, 0])[1], paidMe = e.paid_by === v.me.id;
+  let a2;
+  if (e.kind === 'settle') a2 = `<span class="faint">${esc(nm[e.paid_by] || '?')} → ${esc(nm[sh[0]?.[0]] || '?')}</span>`;
+  else if (paidMe && e.amount - my) a2 = `<span class="pos">you lent ${fmt(e.amount - my)}</span>`;
+  else if (!paidMe && my) a2 = `<span class="neg">your share ${fmt(my)}</span>`;
+  else a2 = `<span class="faint">not involved</span>`;
+  const who = e.kind === 'settle' ? 'Payment' : `${esc(nm[e.paid_by] || 'Someone')} paid`;
+  const tag = e.pending ? ' · <b style="color:var(--warn)">waiting to sync</b>' : e.source === 'auto' ? ' · monthly' : '';
+  return `<button class="row tap" data-a="exp" data-id="${e.id}"><div class="ico">${icon(e)}</div><div class="grow"><div class="t1">${esc(e.description)}</div>
+    <div class="t2">${who} · ${day(e.created_at)}${tag}</div></div>
+    <div class="amt"><div class="a1">${e.amount < 0 ? '−' : ''}${fmt(e.amount)}</div><div class="a2">${a2}</div></div></button>`;
+}
+
+function billsTab(v) {
+  const nm = names(v);
+  let h = `<div class="card" style="background:var(--accent-soft);border-color:transparent;box-shadow:none"><div class="t1">Set it once</div>
+    <div class="t2 wrapt">Each bill is added on its day every month at 8 AM and split between flatmates. Guests are never included. Anyone on Telegram gets a ping.</div></div>
+    <div class="sec"><h2>Monthly bills</h2><button class="btn sm" data-a="bill-new">Add bill</button></div>`;
+  if (!v.recurring.length) return h + `<div class="card empty">No monthly bills yet.<br>Add rent, maid, cook or maintenance once.</div>`;
+  return h + `<div class="card">` + v.recurring.map(r => {
+    const split = r.split ? JSON.parse(r.split).map(id => nm[id]).filter(Boolean).join(', ') : 'all flatmates';
+    const payer = nm[r.paid_by] || '?';
+    return `<div class="row"><div class="ico">${icon({ description: r.description })}</div><div class="grow"><div class="t1">${esc(r.description)}</div>
+      <div class="t2">On the ${ord(r.day)} · ${esc(payer)} ${payer === 'You' ? 'pay' : 'pays'} · ${esc(split)}</div></div>
+      <div class="amt"><div class="a1">${fmt(r.amount)}</div></div><button class="btn sm ghost" data-a="bill-del" data-id="${r.id}" aria-label="Stop ${esc(r.description)}">✕</button></div>`;
+  }).join('') + `</div>`;
+}
+
+function flatTab(v) {
+  const admin = v.me.role === 'admin', nm = names(v), net = nets(v);
+  const invite = location.origin + (DEMO ? '/demo' : '/') + '?code=' + v.flat.invite_code;
+  let h = `<div class="card"><div class="t2">Invite code</div><div class="code">${esc(v.flat.invite_code)}</div>
+    <div class="t2 wrapt" style="margin:4px 0 12px">Flatmates join with this code${admin ? ' and you approve them' : '. The admin approves them'}.</div>
+    <div class="btns"><a class="btn sm" href="${esc(waHref(`Join our flat on ${C.name} to split rent and bills: ${invite} (code ${v.flat.invite_code})`))}" target="_blank" rel="noopener">Share on WhatsApp</a>
+    <button class="btn sm ghost" data-a="copy" data-text="${esc(invite)}">Copy link</button></div></div>`;
+
+  const reqs = v.members.filter(m => m.status === 'pending');
+  if (reqs.length) h += `<div class="sec"><h2>Join requests</h2></div><div class="card">` + reqs.map(m => `<div class="row"><div class="ico">🙋</div><div class="grow"><div class="t1">${esc(m.name)}</div><div class="t2">${day(m.created_at)}</div></div>
+    ${admin ? `<button class="btn sm ghost" data-a="reject" data-id="${m.id}">Reject</button><button class="btn sm" data-a="approve" data-id="${m.id}">Approve</button>` : '<span class="t2">Waiting</span>'}</div>`).join('') + `</div>`;
+
+  h += `<div class="sec"><h2>Flatmates</h2></div><div class="card">` + residents(v).map(m => `<div class="row"><div class="ico">${esc(m.name[0]?.toUpperCase() || '?')}</div>
+    <div class="grow"><div class="t1">${esc(m.name)}${m.id === v.me.id ? ' (you)' : ''}${m.role === 'admin' ? '<span class="badge acc">admin</span>' : ''}${m.status === 'placeholder' ? '<span class="badge">not joined yet</span>' : ''}${m.tg ? '<span class="badge">Telegram</span>' : ''}</div></div>
+    ${admin && m.id !== v.me.id && m.status === 'approved' ? `<button class="btn sm ghost" data-a="relogin" data-id="${m.id}" data-name="${esc(m.name)}">Login link</button>` : ''}</div>`).join('') + `</div>`;
+
+  // Guests: active ones, plus ended ones that still owe or are owed.
+  const guests = counted(v).filter(isGuest), shown = guests.filter(g => activeGuest(g) || Math.abs(net[g.id] || 0) >= 100), hidden = guests.length - shown.length;
+  h += `<div class="sec"><h2>Guests</h2><button class="btn sm" data-a="guest-new">Add guest</button></div><div class="card">`;
+  h += shown.length ? shown.map(g => {
+    const b = net[g.id] || 0, state = activeGuest(g) ? (g.expires_at ? `until ${dayLong(g.expires_at)}` : 'no end date') : 'access ended';
+    return `<button class="row tap" data-a="guest" data-id="${g.id}"><div class="ico">${esc(g.name[0]?.toUpperCase() || '?')}</div><div class="grow">
+      <div class="t1">${esc(g.name)}${activeGuest(g) ? '' : '<span class="badge warn">ended</span>'}</div><div class="t2">${state} · added by ${esc(nm[g.host_id] || 'a flatmate')}</div></div>
+      <div class="amt"><div class="a1 ${b >= 100 ? 'pos' : b <= -100 ? 'neg' : 'faint'}">${Math.abs(b) < 100 ? 'settled' : (b > 0 ? 'gets ' : 'owes ') + fmt(b)}</div></div></button>`;
+  }).join('') : `<div class="t2 wrapt">Friends staying over? Add them for a few days. They see only entries they're part of and settle directly with whoever they shared with.</div>`;
+  if (hidden) h += `<div class="t2" style="padding-top:10px">${hidden} past ${hidden === 1 ? 'guest' : 'guests'}, all settled</div>`;
+  h += `</div>`;
+
+  // Simplify payments
+  const c = counted(v), on = !!v.flat.simplify, nOn = settlePlan(c, v.expenses, true).length, nOff = settlePlan(c, v.expenses, false).length;
+  h += `<div class="sec"><h2>Settings</h2></div><div class="card"><label class="row" for="simplify" style="cursor:${admin ? 'pointer' : 'default'}"><div class="grow">
+    <div class="t1">Simplify payments</div><div class="t2 wrapt">If A owes B and B owes C, A pays C directly. Same totals, fewer payments.${nOff > nOn ? ` Right now: <b>${nOn}</b> instead of <b>${nOff}</b>.` : ''}${admin ? '' : ' Only the admin can change this.'}</div></div>
+    <input type="checkbox" class="switch" id="simplify" data-a="simplify" ${on ? 'checked' : ''} ${admin ? '' : 'disabled'} aria-label="Simplify payments"></label></div>`;
+
+  h += telegramCard(v, admin ? ' Join requests arrive there with Approve buttons.' : '');
+  if (admin) {
+    h += `<div class="sec"><h2>Import</h2></div><div class="card"><div class="t2 wrapt" style="margin-bottom:12px">Bring your history from Tricount (CSV export). Importing the same file again skips entries already here.</div>
+      <button class="btn sm" data-a="import">Import CSV</button></div>`;
+    const b = v.backup || {};
+    const status = b.sheet ? (b.last ? `✅ Last copied to your Google Sheet ${new Date(b.last).toLocaleString(C.locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}. Runs every night.` : '✅ Google Sheet connected. The first copy runs tonight, or tap Back up now.')
+      : "Google Sheet backup isn't set up yet (see the README). You can download a backup file anytime.";
+    h += `<div class="sec"><h2>Backup</h2></div><div class="card"><div class="t2 wrapt" style="margin-bottom:12px">${status} The database also keeps 30 days of automatic history.</div>
+      <div class="btns">${b.sheet ? '<button class="btn sm" data-a="bk-now">Back up now</button>' : ''}<button class="btn sm ghost" data-a="bk-dl">Download backup</button><button class="btn sm ghost" data-a="bk-restore">Restore…</button></div></div>`;
+  }
+  return h + deviceCard(v);
+}
+function youTab(v) {
+  return `<div class="card"><div class="t1">${esc(v.me.name)}<span class="badge">guest</span></div>
+    <div class="t2 wrapt">${v.me.expired ? 'Your access ended. You can still see and settle what you owe.' : `Added by ${esc(v.flat.host || 'a flatmate')}${v.me.expires_at ? `, until ${dayLong(v.me.expires_at)}` : ''}.`} You see only entries you're part of.</div></div>`
+    + telegramCard(v, '') + deviceCard(v);
+}
+function telegramCard(v, extra) {
+  const btn = C.bot && !DEMO
+    ? `<a class="btn sm${v.me.tg ? ' ghost' : ''}" href="https://t.me/${esc(C.bot)}?start=${esc(v.me.tg_code)}" target="_blank" rel="noopener">${v.me.tg ? 'Open bot' : 'Connect Telegram'}</a>`
+    : `<button class="btn sm${v.me.tg ? ' ghost' : ''}" data-a="tg">${v.me.tg ? 'Open bot' : 'Connect Telegram'}</button>`;
+  return `<div class="sec"><h2>Telegram</h2></div><div class="card"><div class="t2 wrapt" style="margin-bottom:12px">${v.me.tg ? '✅ Connected.' : 'Connect once.'} Type <b>450 milk</b> to the bot to add an expense, <b>/bal</b> for balances.${extra}</div>${btn}</div>`;
+}
+function deviceCard(v) {
+  return `<div class="sec"><h2>This device</h2></div><div class="card"><div class="btns">
+    ${DEMO ? '' : '<button class="btn sm ghost" data-a="device-link">Use on another device</button>'}
+    ${DEMO && !amGuest(v) ? '<button class="btn sm ghost" data-a="demo-view" data-id="g1">See what a guest sees</button>' : ''}
+    <button class="btn sm ghost" data-a="theme">Light / dark</button>
+    ${DEMO ? '<button class="btn sm ghost" data-a="demo-reset">Reset demo</button>' : '<button class="btn sm danger" data-a="signout-ask">Sign out</button>'}</div></div>`;
+}
+function landing() {
+  const code = new URLSearchParams(location.search).get('code') || '';
+  if (code) UI.landTab = 'join';
+  const join = UI.landTab === 'join';
+  return `<div class="wrap land"><div class="logo">${esc(C.name)}<span>.</span></div>
+    <p class="lead">Split rent, maid, cook and every bill with your flatmates. No ads, no sign-up.</p>
+    <div class="card"><div class="tabs" role="tablist"><button class="${join ? 'on' : ''}" data-a="land" data-t="join">Join a flat</button><button class="${join ? '' : 'on'}" data-a="land" data-t="new">Start a flat</button></div>
+    ${join ? `<form data-f="join"><label class="f" for="j-code">Invite code</label><input class="in" id="j-code" name="code" value="${esc(code)}" autocapitalize="characters" autocomplete="off" placeholder="e.g. K7M2QX" required>
+      <label class="f" for="j-name">Your name</label><input class="in" id="j-name" name="name" autocomplete="given-name" placeholder="What flatmates call you" required>
+      <button class="btn block" style="margin-top:18px">Request to join</button></form>`
+    : `<form data-f="new"><label class="f" for="n-flat">Flat name</label><input class="in" id="n-flat" name="flat" placeholder="e.g. Flat 402" required>
+      <label class="f" for="n-name">Your name</label><input class="in" id="n-name" name="name" autocomplete="given-name" required>
+      <button class="btn block" style="margin-top:18px">Create flat</button><div class="t2 wrapt" style="margin-top:10px">You'll be the admin and approve who joins.</div></form>`}
+    </div><a href="/demo" class="btn ghost block">Try the demo, no invite needed</a></div>`;
+}
+function pendingScreen(v) {
+  return `<div class="wrap land"><div class="logo" style="font-size:34px">Almost in<span>.</span></div>
+    <p class="lead">Waiting for ${esc(v.flat.admin || 'the admin')} to approve you into <b>${esc(v.flat.name)}</b>. This page updates by itself.</p>
+    <div class="card" style="display:flex;gap:12px;align-items:center"><span class="spin" style="color:var(--accent)"></span><span class="muted">Checking every few seconds…</span></div>
+    <button class="btn ghost" data-a="leave">Cancel request</button></div>`;
+}
+
+// ---------- SHEETS ----------
+function open(sheet) { $layer.innerHTML = ''; UI.sheet = sheet; renderSheet(); }
+function close() { UI.sheet = null; renderSheet(); }
+function renderSheet() {
+  if (!UI.sheet) { $layer.innerHTML = ''; return; }
+  const v = view(), s = UI.sheet;
+  const html = SHEETS[s.type](v, s);
+  const existing = $layer.querySelector('.sheet');
+  if (existing) existing.innerHTML = `<div class="grab"></div>${html}`; // update in place, no re-animation
+  else {
+    $layer.innerHTML = `<div class="scrim" data-a="scrim"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`;
+    const auto = $layer.querySelector('[autofocus]'); if (auto) setTimeout(() => auto.focus(), 60);
+  }
+}
+const chips = (list, sel, group, multi, extra = []) => `<div class="chips" data-group="${group}">` +
+  [...list.map(m => [m, false]), ...extra.map((m, i) => [m, i === 0])].map(([m, first]) =>
+    `${first ? '<span class="div">Guests</span>' : ''}<button type="button" class="chip${sel.includes(m.id) ? ' on' : ''}" data-a="chip" data-multi="${multi ? 1 : ''}" data-id="${m.id}" aria-pressed="${sel.includes(m.id)}">${esc(m.name)}</button>`).join('') + `</div>`;
+const SHEETS = {
+  add(v) {
+    const { main, extra } = pickers(v);
+    const split = amGuest(v) ? [v.me.id, hostId(v)].filter(Boolean) : main.map(m => m.id);
+    return `<form data-f="add"><h3>Add expense</h3>
+      <label class="f" for="a-amt">Amount</label><input class="in huge" id="a-amt" name="amount" inputmode="decimal" placeholder="${esc(SYMBOL)}0" autofocus required>
+      <label class="f" for="a-desc">What for</label><input class="in" id="a-desc" name="description" placeholder="Groceries" maxlength="80">
+      <div class="chips" style="margin-top:8px">${frequent(v).map(q => `<button type="button" class="chip" data-a="quick" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+      <label class="f">Paid by</label>${chips(main, [v.me.id], 'paid', false, extra)}
+      <label class="f">Split equally between</label>${chips(main, split, 'split', true, extra)}
+      <button class="btn block" style="margin-top:20px">Save</button></form>`;
+  },
+  settle(v, s) {
+    const { main, extra } = pickers(v);
+    return `<form data-f="settle"><h3>Record a payment</h3><div class="t2 wrapt">Cash or UPI that happened outside the app.</div>
+      <label class="f">Who paid</label>${chips(main, [s.from || v.me.id], 'paid', false, extra)}
+      <label class="f">To whom</label>${chips(main, s.to ? [s.to] : [], 'to', false, extra)}
+      <label class="f" for="s-amt">Amount</label><input class="in huge" id="s-amt" name="amount" inputmode="decimal" value="${s.amount ? s.amount / 100 : ''}" placeholder="${esc(SYMBOL)}0" ${s.amount ? '' : 'autofocus'} required>
+      <button class="btn block" style="margin-top:20px">Record payment</button></form>`;
+  },
+  exp(v, s) {
+    const e = v.expenses.find(x => x.id === s.id);
+    if (!e) return '<div class="empty">This entry was removed.</div>';
+    const nm = names(v), canDel = e.pending || e.created_by === v.me.id || v.me.role === 'admin';
+    const via = { import: ' · imported', telegram: ' · via Telegram', auto: ' · monthly bill' }[e.source] || '';
+    return `<h3>${icon(e)} ${esc(e.description)}</h3><div class="t2">${new Date(e.created_at).toLocaleString(C.locale, { dateStyle: 'medium', timeStyle: 'short' })}${via}</div>
+      <div class="card" style="margin-top:14px"><div class="row"><div class="grow t1">Paid by ${esc(nm[e.paid_by] || '?')}</div><div class="a1 mono">${fmt(e.amount)}</div></div>
+      ${sharesOf(e).map(([id, a]) => `<div class="row"><div class="grow t2">${e.kind === 'settle' ? 'To' : 'Share of'} ${esc(nm[id] || 'Former member')}</div><div class="mono">${fmt(a)}</div></div>`).join('')}</div>
+      ${canDel && !(amGuest(v) && v.me.expired) ? `<button class="btn danger block" data-a="del" data-id="${e.id}">Delete</button>` : '<div class="t2 wrapt">Only whoever added this, or the admin, can delete it.</div>'}`;
+  },
+  bill(v) {
+    const res = asYou(v, residents(v));
+    return `<form data-f="bill"><h3>Monthly bill</h3>
+      <label class="f" for="b-desc">Name</label><input class="in" id="b-desc" name="description" placeholder="Rent" required maxlength="60" autofocus>
+      <div class="chips" style="margin-top:8px">${['Rent', 'Maid', 'Cook', 'Maintenance', 'Wifi'].map(q => `<button type="button" class="chip" data-a="quick" data-q="${q}">${q}</button>`).join('')}</div>
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:10px"><div><label class="f" for="b-amt">Amount</label><input class="in" id="b-amt" name="amount" inputmode="decimal" placeholder="${esc(SYMBOL)}0" required></div>
+      <div><label class="f" for="b-day">Day of month</label><input class="in" id="b-day" name="day" inputmode="numeric" value="1" required></div></div>
+      <label class="f">Who pays it</label>${chips(res, [v.me.id], 'paid', false)}
+      <label class="f">Split between</label>${chips(res, res.map(m => m.id), 'split', true)}
+      <label class="toggle"><input type="checkbox" name="addNow"> Also add it for this month now</label>
+      <button class="btn block" style="margin-top:20px">Save bill</button></form>`;
+  },
+  approve(v, s) {
+    const m = v.members.find(x => x.id === s.id), ph = v.members.filter(x => x.status === 'placeholder' && !isGuest(x));
+    const guess = ph.find(p => p.name.toLowerCase() === m?.name.toLowerCase());
+    const radio = (val, label, on) => `<label class="row" style="cursor:pointer"><input type="radio" name="as" value="${val}" ${on ? 'checked' : ''} style="accent-color:var(--accent);width:20px;height:20px"><div class="grow t1">${label}</div></label>`;
+    return `<h3>Approve ${esc(m?.name)}</h3><div class="t2 wrapt">Are they someone from your imported history? Linking keeps their old balance.</div>
+      <div class="card" style="margin-top:14px">${ph.map(p => radio(p.id, `${esc(p.name)} <span class="badge">imported</span>`, guess?.id === p.id)).join('')}${radio('', 'New flatmate', !guess)}</div>
+      <button class="btn block" data-a="approve-go" data-id="${s.id}">Approve</button>`;
+  },
+  guestNew() {
+    const opts = [['0', 'Today'], ['2', '3 days'], ['6', '1 week'], ['29', '1 month'], ['', 'No end date']];
+    return `<form data-f="guest"><h3>Add a guest</h3><div class="t2 wrapt">They see only entries they're part of, never monthly bills, and settle directly with whoever they shared with.</div>
+      <label class="f" for="g-name">Name</label><input class="in" id="g-name" name="name" autocomplete="off" placeholder="e.g. Neha" required autofocus>
+      <label class="f">Staying until</label><div class="chips" data-group="until">${opts.map(([d, l]) => `<button type="button" class="chip${d === '6' ? ' on' : ''}" data-a="chip" data-id="${d}">${l}</button>`).join('')}</div>
+      <button class="btn block" style="margin-top:20px">Add guest</button></form>`;
+  },
+  guest(v, s) {
+    const g = v.members.find(m => m.id === s.id); if (!g) return '<div class="empty">Guest not found.</div>';
+    const b = nets(v)[g.id] || 0, canManage = v.me.role === 'admin' || g.host_id === v.me.id, active = activeGuest(g);
+    return `<h3>${esc(g.name)}<span class="badge">guest</span></h3>
+      <div class="t2 wrapt">${active ? (g.expires_at ? `Access until ${dayLong(g.expires_at)}` : 'No end date') : 'Access ended'} · ${Math.abs(b) < 100 ? 'all settled' : b > 0 ? `gets back ${fmt(b)}` : `owes ${fmt(b)}`}</div>
+      ${canManage ? `<div class="btns" style="margin-top:16px;flex-direction:column">
+        <button class="btn block" data-a="guest-link" data-id="${g.id}">Send login link</button>
+        <button class="btn ghost block" data-a="guest-until" data-id="${g.id}" data-days="7">${active ? 'Extend by a week' : 'Give access for a week'}</button>
+        ${active ? `<button class="btn danger block" data-a="guest-until" data-id="${g.id}" data-days="end">End access now</button>` : ''}</div>`
+      : `<div class="t2 wrapt" style="margin-top:14px">Only whoever added this guest, or the admin, can change their access.</div>`}`;
+  },
+  import(v) {
+    const s = UI.imp;
+    if (!s) return `<h3>Import from Tricount</h3><div class="t2 wrapt" style="margin:6px 0 16px">In Tricount, open the group, tap the menu, choose <b>Export</b>, then CSV. Pick that file here.</div>
+      <label class="btn block">Choose CSV file<input type="file" accept=".csv,text/csv" data-a="file" hidden></label>`;
+    const people = residents(v), total = s.rows.reduce((a, r) => a + (r.kind === 'expense' ? r.amount : 0), 0);
+    const dates = s.rows.map(r => r.date).sort((a, b) => a - b), net = {};
+    s.rows.forEach(r => { net[r.payer] = (net[r.payer] || 0) + r.amount; r.shares.forEach(([n, a]) => net[n] = (net[n] || 0) - a); });
+    return `<h3>Import ${s.rows.length} entries</h3><div class="t2">${fmt(total)} spent · ${day(dates[0])} ${new Date(dates[0]).getFullYear()} to ${day(dates.at(-1))} ${new Date(dates.at(-1)).getFullYear()}${s.skipped ? ` · ${s.skipped} unreadable rows skipped` : ''}</div>
+      <label class="f">Match people from the file</label><div class="card">` + s.names.map(n => `<div class="row"><div class="grow"><div class="t1">${esc(n)}</div>
+        <div class="t2 ${net[n] >= 100 ? 'pos' : net[n] <= -100 ? 'neg' : ''}">${net[n] >= 100 ? 'gets back ' : net[n] <= -100 ? 'owes ' : ''}${fmt(net[n] || 0)}</div></div>
+        <select class="sel" data-a="imp-map" data-n="${esc(n)}" aria-label="Who is ${esc(n)}">${people.map(m => `<option value="${m.id}" ${s.map[n] === m.id ? 'selected' : ''}>${esc(m.id === v.me.id ? m.name + ' (you)' : m.name)}</option>`).join('')}
+        <option value="new" ${s.map[n] === 'new' ? 'selected' : ''}>Add “${esc(n)}”, joins later</option></select></div>`).join('') +
+      `</div><div class="t2 wrapt" style="margin-bottom:14px">People added now can claim their history when they join. You pick them while approving.</div>
+      <button class="btn block" data-a="imp-go">Import</button><button class="btn ghost block" style="margin-top:8px" data-a="imp-reset">Choose another file</button>`;
+  },
+  restore(v) {
+    return `<h3>Restore a backup</h3><div class="t2 wrapt" style="margin:6px 0 16px">This replaces all entries and monthly bills with the backup. Everyone keeps their login.
+      <b>Your current data is downloaded first</b>, so you can undo it.</div>
+      <label class="btn block">From a backup file (.json)<input type="file" accept=".json,application/json" data-a="restore-file" hidden></label>
+      ${v.backup?.sheet ? '<button class="btn ghost block" style="margin-top:8px" data-a="restore-sheet">Latest copy from Google Sheet</button>' : ''}`;
+  },
+  info(v, s) { return `<h3>${esc(s.title)}</h3><div class="t2 wrapt" style="margin:6px 0 14px">${s.body}</div>${s.extra || ''}<button class="btn ghost block" data-a="close">Done</button>`; },
+};
+// A login-link sheet with one-tap WhatsApp + copy.
+function linkSheet(title, body, link, waText) {
+  open({ type: 'info', title, body, extra: `<div class="btns" style="margin-bottom:12px"><a class="btn sm" href="${esc(waHref(waText))}" target="_blank" rel="noopener">Send on WhatsApp</a>
+    <button class="btn sm ghost" data-a="copy" data-text="${esc(link)}">Copy link</button></div>` });
+}
+
+// ---------- DIALOGS ----------
+let toastT;
+function toast(msg) { clearTimeout(toastT); document.querySelector('.toast')?.remove(); const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg; document.body.appendChild(t); toastT = setTimeout(() => t.remove(), 2800); }
+// In-app confirm (browser confirm() is blocked in some in-app browsers and embeds).
+function ask(text, okLabel = 'Confirm', danger = false) {
+  return new Promise(res => {
+    const d = document.createElement('div'); d.className = 'ask';
+    d.innerHTML = `<div class="sheet" role="alertdialog" aria-modal="true"><div class="grab"></div><h3 style="font-size:18px;margin-bottom:16px">${esc(text)}</h3>
+      <div class="btns" style="flex-wrap:nowrap"><button class="btn ghost block" data-r="0">Cancel</button><button class="btn block${danger ? ' danger' : ''}" data-r="1">${esc(okLabel)}</button></div></div>`;
+    d.addEventListener('click', e => { e.stopPropagation(); const b = e.target.closest('[data-r]'); if (b || e.target === d) { d.remove(); res(b?.dataset.r === '1'); } });
+    document.body.appendChild(d); d.querySelector('[data-r="1"]').focus();
+  });
+}
+async function copy(text, msg = 'Copied') {
+  try { await navigator.clipboard.writeText(text); toast(msg); }
+  catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); let ok = false; try { ok = document.execCommand('copy'); } catch {} t.remove(); toast(ok ? msg : 'Copy this: ' + text); }
+}
+async function downloadBackup(label = 'backup') {
+  const snap = await server('GET', '/api/backup');
+  if (FORCE_DEMO) { toast('Downloads are off in this preview. They work in the real app.'); return snap; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(snap, null, 1)], { type: 'application/json' }));
+  a.download = `its-settled-${label}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  return snap;
+}
+async function doRestore(payload) {
+  if (!await ask('Replace all entries and monthly bills with this backup?', 'Restore', true)) return;
+  try { await downloadBackup('before-restore'); } catch { if (!await ask("Couldn't save your current data first. Restore anyway?", 'Restore anyway', true)) return; }
+  const r = await act('POST', '/api/restore', payload).catch(() => null);
+  if (r) { close(); UI.tab = 'home'; render(); toast(`Restored ${r.expenses} entries and ${r.recurring} monthly bills`); }
+}
+
+// ---------- EVENTS ----------
+const picked = (root, g) => [...root.querySelectorAll(`[data-group="${g}"] .chip.on`)].map(b => b.dataset.id);
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-a]'); if (!el) return;
+  const a = el.dataset.a, v = view();
+  if (a === 'scrim') { if (e.target === el) close(); return; }
+  if (['file', 'imp-map', 'restore-file', 'simplify'].includes(a)) return; // handled on change
+  switch (a) {
+    case 'tab': UI.tab = el.dataset.t; render(); scrollTo(0, 0); break;
+    case 'land': UI.landTab = el.dataset.t; render(); break;
+    case 'add': if (amGuest(v) && v.me.expired) toast('Your guest access has ended'); else open({ type: 'add' }); break;
+    case 'settle-any': open({ type: 'settle' }); break;
+    case 'settle': open({ type: 'settle', from: el.dataset.from, to: el.dataset.to, amount: +el.dataset.amt }); break;
+    case 'exp': open({ type: 'exp', id: el.dataset.id }); break;
+    case 'bill-new': open({ type: 'bill' }); break;
+    case 'guest-new': open({ type: 'guestNew' }); break;
+    case 'guest': open({ type: 'guest', id: el.dataset.id }); break;
+    case 'close': close(); break;
+    case 'chip': {
+      const on = !el.classList.contains('on');
+      if (!el.dataset.multi) el.parentElement.querySelectorAll('.chip').forEach(c => { c.classList.remove('on'); c.setAttribute('aria-pressed', 'false'); });
+      el.classList.toggle('on', el.dataset.multi ? on : true); el.setAttribute('aria-pressed', String(el.classList.contains('on')));
+      break;
+    }
+    case 'quick': el.closest('form').description.value = el.dataset.q; break;
+    case 'del': {
+      const id = el.dataset.id;
+      if (id.startsWith('tmp_')) { Q = Q.filter(op => !(op.type === 'add' && 'tmp_' + op.body.cid === id)); ls.set(K.q, Q); }
+      else enqueue({ type: 'del', id });
+      close(); render(); toast('Deleted'); break;
+    }
+    case 'bill-del': if (await ask('Stop this monthly bill? Past entries stay.', 'Stop bill', true)) act('DELETE', '/api/recurring/' + el.dataset.id, null, 'Bill stopped'); break;
+    case 'approve':
+      if (v.members.some(m => m.status === 'placeholder' && !isGuest(m))) open({ type: 'approve', id: el.dataset.id });
+      else act('POST', `/api/members/${el.dataset.id}/approve`, {}, 'Approved');
+      break;
+    case 'approve-go': {
+      const as = $layer.querySelector('input[name=as]:checked')?.value || null;
+      const r = await act('POST', `/api/members/${el.dataset.id}/approve`, { as }).catch(() => null);
+      if (r) { close(); toast(r.linked ? `Approved and linked to ${r.linked}` : 'Approved'); }
+      break;
+    }
+    case 'reject': if (await ask('Reject this join request?', 'Reject', true)) act('POST', `/api/members/${el.dataset.id}/reject`, {}, 'Rejected'); break;
+    case 'relogin': {
+      if (!await ask(`Make a new login link for ${el.dataset.name}? Their current login stops working.`, 'Make link')) break;
+      const r = await act('POST', `/api/members/${el.dataset.id}/relogin`).catch(() => null);
+      if (r) linkSheet(`Login link for ${el.dataset.name}`, 'Send it privately. Anyone with this link can sign in as them.', loginLink(r.token), `Your ${C.name} login: ${loginLink(r.token)}`);
+      break;
+    }
+    case 'guest-link': {
+      const g = v.members.find(m => m.id === el.dataset.id);
+      const r = await act('POST', `/api/members/${g.id}/relogin`).catch(() => null);
+      if (r) linkSheet(`Send ${g.name} their link`, `${esc(g.name)} opens it and they're in. No code, no approval. Any earlier link stops working.`, loginLink(r.token),
+        `Hi ${g.name}! Track what we spend while you're here: ${loginLink(r.token)}`);
+      break;
+    }
+    case 'guest-until': {
+      const g = v.members.find(m => m.id === el.dataset.id), end = el.dataset.days === 'end';
+      if (end && !await ask(`End ${g.name}'s access now? They can still see what's left to settle.`, 'End access', true)) break;
+      const from = activeGuest(g) && g.expires_at ? g.expires_at : Date.now(), d = new Date(from); d.setHours(23, 59, 59, 999); d.setDate(d.getDate() + 7);
+      const r = await act('POST', `/api/guests/${g.id}`, { until: end ? 'now' : d.getTime() }, end ? 'Access ended' : `Access until ${dayLong(d)}`).catch(() => null);
+      if (r) close();
+      break;
+    }
+    case 'device-link':
+      linkSheet('Use on another device', 'Open this link on your other phone or laptop. Keep it private, since it signs in as you. Save it somewhere safe; it is your way back in if this browser is cleared.',
+        loginLink(token()), `My ${C.name} login: ${loginLink(token())}`);
+      break;
+    case 'copy': copy(el.dataset.text); break;
+    case 'tg':
+      if (DEMO) toast('In your real flat, this opens your Telegram bot');
+      else open({ type: 'info', title: 'Telegram is not set up yet', body: v.me.role === 'admin' ? 'Add your bot token to the deployment (see the README), and this button will link your chat.' : 'Ask the admin to finish the Telegram setup.' });
+      break;
+    case 'import': UI.imp = null; open({ type: 'import' }); break;
+    case 'imp-reset': UI.imp = null; renderSheet(); break;
+    case 'imp-go': {
+      el.disabled = true; el.innerHTML = '<span class="spin"></span>';
+      const r = await act('POST', '/api/import', { people: UI.imp.map, rows: UI.imp.rows }).catch(() => null);
+      if (r) { close(); UI.imp = null; UI.tab = 'home'; render(); toast(`Imported ${r.added}` + (r.duplicates ? `, ${r.duplicates} were already here` : '') + (r.skipped ? `, ${r.skipped} skipped` : '')); }
+      else { el.disabled = false; el.textContent = 'Import'; }
+      break;
+    }
+    case 'bk-now': act('POST', '/api/backup/now', {}, 'Backing up in the background'); break;
+    case 'bk-dl': try { await downloadBackup(); if (!FORCE_DEMO) toast('Backup downloaded'); } catch (err) { toast(err.offline ? "You're offline" : err.message); } break;
+    case 'bk-restore': open({ type: 'restore' }); break;
+    case 'restore-sheet': doRestore({ from: 'sheet' }); break;
+    case 'theme': {
+      const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      const nx = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = nx; ls.set('is_theme', nx); break;
+    }
+    case 'signout-ask': if (await ask('Sign out on this device? You need your login link (Flat → Use on another device) to get back in.', 'Sign out', true)) signOut(); break;
+    case 'signout': signOut(); break;
+    case 'leave': if (await ask('Cancel your join request?', 'Cancel request', true)) { await server('POST', '/api/leave').catch(() => {}); signOut(); } break;
+    case 'demo-reset': if (await ask('Reset the demo flat?', 'Reset')) { ls.set(K.state, null); ls.set(K.q, null); Q = []; UI.tab = 'home'; await refresh(); toast('Demo reset'); } break;
+    case 'demo-view': await server('POST', '/api/demo/view', { id: el.dataset.id }); UI.tab = 'home'; await refresh(); scrollTo(0, 0); break;
+  }
+});
+document.addEventListener('change', async e => {
+  const el = e.target, a = el.dataset.a;
+  if (a === 'imp-map') { UI.imp.map[el.dataset.n] = el.value; renderSheet(); }
+  if (a === 'simplify') {
+    D.flat.simplify = el.checked ? 1 : 0; render();
+    act('POST', '/api/flat', { simplify: el.checked }, el.checked ? 'Payments simplified' : 'Showing direct debts').catch(() => {});
+  }
+  if (a === 'file' && el.files[0]) {
+    try {
+      const parsed = parseTricount(await el.files[0].text()), v = view(), people = residents(v);
+      if (!parsed.rows.length) throw new Error('No entries found in that file.');
+      const map = {};
+      for (const n of parsed.names) map[n] = people.find(m => m.name.trim().toLowerCase() === n.toLowerCase())?.id || 'new';
+      UI.imp = { ...parsed, map }; renderSheet();
+    } catch (err) { toast(err.message); }
+  }
+  if (a === 'restore-file' && el.files[0]) {
+    let snap; try { snap = JSON.parse(await el.files[0].text()); } catch { return toast("That file isn't a backup from this app"); }
+    if (!snap?.app === 'its-settled') return toast("That file isn't a backup from this app");
+    doRestore({ snapshot: snap });
+  }
+});
+document.addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target, type = f.dataset.f, v = view(), btn = f.querySelector('button:not([type=button])');
+  if (type === 'add') {
+    const amount = toPaise(f.amount.value), split = picked(f, 'split'), paidBy = picked(f, 'paid')[0] || v.me.id;
+    if (!amount) return toast('Enter an amount');
+    if (!split.length) return toast('Pick at least one person to split with');
+    if (amGuest(v) && paidBy !== v.me.id && !split.includes(v.me.id)) return toast('As a guest, include yourself as payer or in the split');
+    enqueue({ type: 'add', body: { cid: uid(), amount: amount / 100, description: f.description.value.trim(), paidBy, split, at: Date.now() } });
+    close(); toast(UI.online ? 'Added' : "Saved offline. It syncs when you're back online.");
+  }
+  if (type === 'settle') {
+    const amount = toPaise(f.amount.value), from = picked(f, 'paid')[0], to = picked(f, 'to')[0];
+    if (!amount) return toast('Enter an amount');
+    if (!from || !to || from === to) return toast('Pick two different people');
+    enqueue({ type: 'add', body: { cid: uid(), kind: 'settle', amount: amount / 100, description: 'Settle up', paidBy: from, split: [to], at: Date.now() } });
+    close(); toast('Payment recorded');
+  }
+  if (type === 'bill') {
+    btn.disabled = true;
+    const r = await act('POST', '/api/recurring', { description: f.description.value, amount: f.amount.value, day: f.day.value,
+      paidBy: picked(f, 'paid')[0], split: picked(f, 'split'), addNow: f.addNow.checked }, 'Monthly bill saved').catch(() => null);
+    if (r) close(); else btn.disabled = false;
+  }
+  if (type === 'guest') {
+    const days = picked(f, 'until')[0], name = f.name.value.trim();
+    if (!name) return toast("Enter the guest's name");
+    btn.disabled = true;
+    const r = await act('POST', '/api/guests', { name, until: days === '' || days == null ? null : endOfDay(+days) }).catch(() => null);
+    if (!r) { btn.disabled = false; return; }
+    linkSheet(`${name} is added`, `Send ${esc(name)} this link. They open it and they're in, seeing only entries they're part of.`, loginLink(r.token),
+      `Hi ${name}! Track what we spend while you're here: ${loginLink(r.token)}`);
+  }
+  if (type === 'join' || type === 'new') {
+    btn.disabled = true;
+    try {
+      const r = await server('POST', type === 'join' ? '/api/join' : '/api/flats', type === 'join' ? { code: f.code.value, name: f.name.value } : { flat: f.flat.value, name: f.name.value });
+      ls.set(K.token, r.token); history.replaceState(null, '', '/'); await refresh();
+    } catch (err) { toast(err.offline ? "You're offline" : err.message); btn.disabled = false; }
+  }
+});
+
+// ---------- DEMO BACKEND (mirrors the Worker's rules, runs entirely in this browser) ----------
+function demoSeed() {
+  const t = Date.now(), d = 864e5, ids = ['m1', 'm2', 'm3'], E = [];
+  const add = (desc, amt, by, ago, split = ids, kind = 'expense', source = 'web') =>
+    E.push({ id: 'e' + E.length, kind, description: desc, amount: amt * 100, paid_by: by, split: equalShares(amt * 100, split), created_by: by, source, created_at: t - ago * d });
+  const mo = k => new Date(t - k * d).toLocaleString(C.locale, { month: 'short' });
+  add(`Rent · ${mo(33)}`, 42000, 'm1', 33, ids, 'expense', 'auto'); add(`Maid · ${mo(31)}`, 4500, 'm2', 31, ids, 'expense', 'auto');
+  add(`Cook · ${mo(29)}`, 8500, 'm3', 29, ids, 'expense', 'auto'); add('Electricity', 3240, 'm1', 21); add('Groceries', 1260, 'm2', 14, ['m2', 'm3']);
+  add('Wifi recharge', 799, 'm3', 9); add('Settle up', 6000, 'm2', 6, ['m1'], 'settle'); add('Groceries', 860, 'm3', 4, ['m2', 'm3']);
+  add('Dinner at Paradise', 1800, 'g1', 3, ['g1', 'm1', 'm2']); add('Cab from airport', 650, 'm2', 3, ['m2', 'g1']);
+  add('Milk & eggs', 540, 'm3', 2, ids, 'expense', 'telegram'); add(`Rent · ${mo(1)}`, 42000, 'm1', 1, ids, 'expense', 'auto');
+  return {
+    viewAs: 'm1', flat: { name: 'Flat 402', invite_code: 'DEMO42', simplify: 1 },
+    members: [{ id: 'm1', name: 'Arjun', role: 'admin', status: 'approved', tg: 1, created_at: t - 90 * d }, { id: 'm2', name: 'Aman', role: 'member', status: 'approved', tg: 1, created_at: t - 88 * d },
+      { id: 'm3', name: 'Rohan', role: 'member', status: 'approved', tg: 0, created_at: t - 80 * d }, { id: 'm4', name: 'Kabir', role: 'member', status: 'pending', tg: 0, created_at: t - 3600e3 },
+      { id: 'g1', name: 'Neha', role: 'guest', status: 'approved', tg: 0, host_id: 'm2', expires_at: endOfDay(4), created_at: t - 3 * d }],
+    expenses: E.sort((a, b) => b.created_at - a.created_at),
+    recurring: [{ id: 'r1', description: 'Rent', amount: 4200000, paid_by: 'm1', split: null, day: 1 }, { id: 'r2', description: 'Maid', amount: 450000, paid_by: 'm2', split: null, day: 3 },
+      { id: 'r3', description: 'Cook', amount: 850000, paid_by: 'm3', split: null, day: 5 }, { id: 'r4', description: 'Maintenance', amount: 240000, paid_by: 'm1', split: null, day: 10 }],
+  };
+}
+async function demoServer(method, path, body = {}) {
+  const S = ls.get(K.state) || demoSeed(), save = () => ls.set(K.state, S), fail = m => { const x = new Error(m); x.status = 400; throw x; };
+  const me = S.members.find(m => m.id === S.viewAs) || S.members[0], guest = isGuest(me), admin = me.role === 'admin';
+  const meOut = { ...me, tg_code: 'DEMO', expired: !!(guest && me.expires_at && me.expires_at <= Date.now()) };
+  const live = S.members.filter(m => m.status === 'approved' || m.status === 'placeholder');
+  const res = live.filter(m => !isGuest(m)).map(m => m.id);
+  const valid = new Set(guest ? [...res, me.id] : live.map(m => m.id));
+  let m;
+  if (method === 'GET' && path === '/api/me') {
+    save();
+    if (guest) return JSON.parse(JSON.stringify({ me: meOut, flat: { name: S.flat.name, simplify: 0, host: S.members.find(x => x.id === me.host_id)?.name },
+      members: S.members.filter(x => x.status !== 'pending' && (!isGuest(x) || x.id === me.id)), expenses: S.expenses.filter(e => involves(e, me.id)), recurring: [], bot: null }));
+    return JSON.parse(JSON.stringify({ me: meOut, flat: S.flat, members: S.members, expenses: S.expenses, recurring: S.recurring, bot: null, backup: admin ? { sheet: false, last: null } : null }));
+  }
+  if (method === 'POST' && path === '/api/demo/view') { S.viewAs = body.id || 'm1'; save(); return { ok: true }; }
+  if (method === 'POST' && path === '/api/expenses') {
+    if (body.cid && S.expenses.some(e => e.cid === body.cid)) return { ok: true, duplicate: true };
+    const amount = toPaise(body.amount), ids = (body.split || []).filter(id => valid.has(id)), paidBy = valid.has(body.paidBy) ? body.paidBy : me.id;
+    if (!amount || !ids.length) fail('Enter an amount and pick people');
+    if (guest && paidBy !== me.id && !ids.includes(me.id)) fail('As a guest, you can only add entries you are part of');
+    S.expenses.unshift({ id: 'e' + uid(), cid: body.cid, kind: body.kind === 'settle' ? 'settle' : 'expense', description: body.description || (body.kind === 'settle' ? 'Settle up' : 'Expense'),
+      amount, paid_by: paidBy, split: equalShares(amount, ids), created_by: me.id, source: 'web', created_at: body.at || Date.now() });
+    S.expenses.sort((a, b) => b.created_at - a.created_at); save(); return { ok: true };
+  }
+  if (method === 'DELETE' && (m = path.match(/^\/api\/expenses\/(.+)$/))) {
+    const e = S.expenses.find(x => x.id === m[1]);
+    if (e && e.created_by !== me.id && !admin) fail('Only whoever added this, or the admin, can delete it');
+    S.expenses = S.expenses.filter(x => x.id !== m[1]); save(); return { ok: true };
+  }
+  if (guest) fail('Guests can only add and settle their own entries');
+  if (method === 'POST' && path === '/api/recurring') {
+    const amount = toPaise(body.amount), dd = Math.round(+body.day);
+    if (!amount || !body.description || !(dd >= 1 && dd <= 31)) fail('Enter a name, an amount and a day between 1 and 31');
+    const ids = (body.split || []).filter(id => res.includes(id));
+    S.recurring.push({ id: 'r' + uid(), description: body.description.trim(), amount, paid_by: body.paidBy || me.id, split: ids.length && ids.length < res.length ? JSON.stringify(ids) : null, day: dd });
+    S.recurring.sort((a, b) => a.day - b.day);
+    if (body.addNow) S.expenses.unshift({ id: 'e' + uid(), kind: 'expense', description: body.description.trim(), amount, paid_by: body.paidBy || me.id,
+      split: equalShares(amount, ids.length ? ids : res), created_by: me.id, source: 'auto', created_at: Date.now() });
+    save(); return { ok: true };
+  }
+  if (method === 'DELETE' && (m = path.match(/^\/api\/recurring\/(.+)$/))) { S.recurring = S.recurring.filter(r => r.id !== m[1]); save(); return { ok: true }; }
+  if (method === 'POST' && path === '/api/guests') {
+    const id = 'g' + uid().slice(0, 8); S.members.push({ id, name: String(body.name).trim().slice(0, 30), role: 'guest', status: 'approved', tg: 0, host_id: me.id, expires_at: body.until || null, created_at: Date.now() });
+    save(); return { id, token: 'demo-guest-' + id };
+  }
+  if (method === 'POST' && (m = path.match(/^\/api\/guests\/(\w+)$/))) {
+    const g = S.members.find(x => x.id === m[1]); if (!g) fail('Guest not found');
+    g.expires_at = body.until === 'now' ? Date.now() : body.until; save(); return { ok: true };
+  }
+  if (method === 'POST' && path === '/api/flat') { if (!admin) fail('Only the admin can change flat settings'); S.flat.simplify = body.simplify ? 1 : 0; save(); return { ok: true }; }
+  if (method === 'POST' && (m = path.match(/^\/api\/members\/(\w+)\/(approve|reject|relogin)$/))) {
+    const t = S.members.find(x => x.id === m[1]); if (!t) fail('Member not found');
+    if (m[2] === 'relogin') return { token: 'demo-login-' + t.id };
+    if (m[2] === 'reject') { S.members = S.members.filter(x => x !== t); save(); return { ok: true }; }
+    const ph = body.as && S.members.find(x => x.id === body.as && x.status === 'placeholder');
+    if (ph) { ph.status = 'approved'; S.members = S.members.filter(x => x !== t); save(); return { ok: true, linked: ph.name }; }
+    t.status = 'approved'; save(); return { ok: true };
+  }
+  if (method === 'POST' && path === '/api/import') {
+    const map = {};
+    for (const [n, tgt] of Object.entries(body.people)) {
+      if (tgt === 'new') { const id = 'p' + uid().slice(0, 8); S.members.push({ id, name: n, role: 'member', status: 'placeholder', tg: 0, created_at: Date.now() }); map[n] = id; }
+      else map[n] = tgt;
+    }
+    const seen = new Set(S.expenses.map(e => e.ext_id).filter(Boolean)); let added = 0, dup = 0;
+    for (const r of body.rows) {
+      if (seen.has(r.key)) { dup++; continue; }
+      S.expenses.push({ id: 'e' + uid(), ext_id: r.key, kind: r.kind, description: r.description, amount: r.amount, paid_by: map[r.payer],
+        split: r.shares.map(([n, a]) => [map[n], a]), created_by: me.id, source: 'import', created_at: r.date }); added++;
+    }
+    S.expenses.sort((a, b) => b.created_at - a.created_at); save(); return { added, duplicates: dup, skipped: 0 };
+  }
+  if (method === 'GET' && path === '/api/backup')
+    return { app: 'its-settled', version: 1, exported_at: new Date().toISOString(), flat: S.flat, members: S.members.filter(x => x.status !== 'pending'),
+      expenses: S.expenses, recurring: S.recurring.map(r => ({ ...r, split: r.split ? JSON.parse(r.split) : null })) };
+  if (method === 'POST' && path === '/api/restore') {
+    if (body.from === 'sheet') fail('Google Sheet backup is not available in the demo');
+    const snap = body.snapshot, idMap = {};
+    for (const p of snap.members) {
+      const hit = S.members.find(c => c.status !== 'pending' && (c.id === p.id || c.name.toLowerCase() === p.name.toLowerCase()));
+      if (hit) idMap[p.id] = hit.id;
+      else { idMap[p.id] = 'p' + uid().slice(0, 8); S.members.push({ id: idMap[p.id], name: p.name, role: p.role === 'guest' ? 'guest' : 'member', status: 'placeholder', tg: 0, created_at: Date.now() }); }
+    }
+    S.expenses = snap.expenses.map(e => ({ ...e, id: 'e' + uid(), paid_by: idMap[e.paid_by], split: e.split.map(([id, a]) => [idMap[id], a]) })).sort((a, b) => b.created_at - a.created_at);
+    S.recurring = (snap.recurring || []).map(r => ({ ...r, id: 'r' + uid(), paid_by: idMap[r.paid_by], split: r.split ? JSON.stringify(r.split.map(id => idMap[id])) : null }));
+    save(); return { ok: true, expenses: S.expenses.length, recurring: S.recurring.length };
+  }
+  fail('Not available in the demo');
+}
+
+// ---------- BOOT ----------
+(function boot() {
+  const th = ls.get('is_theme'); if (th) document.documentElement.dataset.theme = th;
+  const h = location.hash.match(/^#login=(\w{20,})/);
+  if (h && !DEMO) { ls.set(K.token, h[1]); ls.set(K.cache, null); D = null; history.replaceState(null, '', '/'); }
+  render();                    // instant, from cache
+  refresh().then(flush);       // then sync quietly
+  setInterval(() => { if (D?.me?.status === 'pending') refresh(); }, 6000);
+  if ('serviceWorker' in navigator && !FORCE_DEMO) navigator.serviceWorker.register('/sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+name = "its-settled"
+main = "src/worker.js"
+compatibility_date = "2025-06-01"
+
+# Tables are created and migrated automatically on the first request.
+[[d1_databases]]
+binding = "DB"
+database_name = "its-settled"
+database_id = "00000000-0000-0000-0000-000000000000"   # replace with the id from: npx wrangler d1 create its-settled
+
+# Daily run: adds monthly bills, then backs up. 02:30 UTC = 8:00 AM IST; change for your timezone.
+[triggers]
+crons = ["30 2 * * *"]
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
+
+# Public settings. Make it yours here; no code changes needed.
+[vars]
+APP_NAME = "It's Settled"
+CURRENCY = "INR"            # any ISO 4217 code: USD, EUR, GBP...
+LOCALE = "en-IN"            # number and date format: en-US, en-GB, de-DE...
+TIMEZONE = "Asia/Kolkata"   # which day it is for monthly bills
+BOT_USERNAME = ""           # your Telegram bot's username, without @ (optional)
+
+# Secrets (never in this file). Set with: npx wrangler secret put NAME
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET   → Telegram bot (optional)
+#   BACKUP_URL, BACKUP_SECRET                     → Google Sheet backup (optional)
+# For local dev, put them in .dev.vars (git-ignored).

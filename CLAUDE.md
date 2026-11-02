@@ -1,0 +1,82 @@
+# CLAUDE.md: working guide for It's Settled
+
+Read this before changing code. It is written for any model or person continuing the work.
+
+## What this is
+
+A flatmate expense splitter, deployed as ONE Cloudflare Worker with a D1 (SQLite) database. No build step, no framework, no runtime dependencies. Free tier.
+
+## File map
+
+| File | What lives there |
+| --- | --- |
+| `src/core.js` | Pure, shared logic: money math, settle plans (simplified and direct), guest visibility, CSV parsing. Imported by the Worker AND inlined into the page. |
+| `src/worker.js` | Everything server-side: config, schema migrations, JSON API, Telegram webhook, daily cron (monthly bills, then backups), backup/restore, service worker, manifest, icon. |
+| `src/app.html` | The whole web app: CSS tokens, rendering, bottom sheets, offline outbox, and `demoServer` (an in-browser copy of the API for `/demo`). |
+| `backup/Code.gs` | Google Apps Script the owner pastes into their own Google Sheet; receives nightly snapshots. |
+| `scripts/build-demo.mjs` | Builds `dist/demo.html` (app in demo mode, one file). |
+| `test/` | `core.test.mjs` (no server), API suites (`e2e`, `guests`, `tg`, `backup`), `ui.py` (Playwright, phone viewport), `fixtures/tricount-sample.csv` (synthetic). |
+
+## How the page is assembled
+
+`worker.js` serves `app.html` after three replacements, done once per isolate:
+- `/*__CORE__*/` → the source of every export in `core.js` (via `Function#toString`) plus a `__name` no-op shim (esbuild inserts `__name()` calls).
+- `/*__CONFIG__*/` → `const CONFIG = {...}` (name, currency, locale, bot) from `wrangler.toml [vars]`.
+- `__APP_NAME__` → the app name.
+`scripts/build-demo.mjs` does the same and flips `FORCE_DEMO`.
+
+## Invariants (breaking these corrupts balances)
+
+1. **Money is integer paise.** Never store or sum floats. Convert input with `toPaise`.
+2. **An expense's `split` is `[[memberId, paise], ...]` and always sums exactly to `amount`.** Use `equalShares` for equal splits; validate custom shares server-side.
+3. **Settlements are expenses** with `kind: 'settle'`: `paid_by` = who paid, `split` = `[[receiver, amount]]`.
+4. **Balances are derived, never stored.** `netBalances` and `settlePlan` in `core.js` are the only implementations. Do not reimplement money math in the worker or the page.
+5. **Deletes are soft** (`deleted = 1`) except during restore, which replaces a flat's entries in one `db.batch` (a transaction).
+6. **Idempotency:** client entries carry a `cid` stored as `ext_id = 'c:'+cid`; imports use `'tc:'+hash`; monthly bills `'rec:<id>:<yyyy-mm>'`. The unique index `(flat_id, ext_id)` plus `INSERT OR IGNORE` makes retries safe. Keep this for any new write path that can be retried.
+
+## People model
+
+- `role`: `admin` | `member` | `guest`. `status`: `pending` | `approved` | `placeholder` | `rejected`.
+- **counted** = approved or placeholder (they have balances). **residents** = counted and not guests.
+- "Everyone" (monthly bills, the Telegram quick add, add-form defaults) means **residents**, never guests.
+- **Guests:** created by any resident (`host_id`), approved immediately with a login token, optional `expires_at`.
+  - `/api/me` for a guest returns only entries where `involves(e, guestId)`, no other guests, no invite code, no bills.
+  - A guest may only write entries they are part of; after `expires_at` they are read-only (403 on writes).
+  - Only the host or the admin can extend, end, or re-issue a guest's link.
+  - In `settlePlan`, any debt touching a guest stays direct, even with simplify on.
+  - Flat-wide Telegram pings never go to guests (`notifyFlat` filters `role<>'guest'`).
+- **Placeholders** come from imports or restores ("not joined yet"). The admin links a joiner to one when approving (`approve(..., as)`), which moves the login onto the placeholder's id.
+
+## Rules for changes
+
+- **Schema:** append a new array to `MIGRATIONS` in `worker.js`; never edit a shipped one. ALTERs are not idempotent, so keep each migration small. Update `snapshot()`/`restore()` if the new column belongs in backups.
+- **D1 limits:** at most 100 bound parameters per query, and 50 queries per request on the free plan. Any write over a list of rows must use the `json_each` bulk pattern (`bulkExpenses`, `bulkPlaceholders`), never a loop of statements.
+- **New API route:** add it in `api()` after the auth gate, check permissions explicitly (admin / host / guest), and **mirror it in `demoServer`** in `app.html` so the demo keeps working. Add a test in the matching suite.
+- **core.js:** only `export function` declarations, no imports, no module-level state, no closures; functions may call each other by name. They run in both the Worker and the browser.
+- **Online-only vs outbox:** everyday entries (add, settle, delete) go through the outbox (`enqueue`) so they work offline. Settings, guests and admin actions use `act()` and need a connection.
+- **No `alert`/`confirm`/`prompt`/`window.open`:** use `ask()`, `toast()` and real `<a href target=_blank>` links. Some in-app browsers and embeds block the native ones.
+- **Copy:** plain, short, active voice. Name things the way flatmates do. Errors say what went wrong and what to do.
+- **Privacy:** never commit `.dev.vars`, real exports or real names. The test fixture is synthetic; regenerate it with `node test/make-fixture.mjs`.
+
+## Testing
+
+```bash
+npm test                                  # core math + CSV parsing, no server
+npm run dev                               # in another terminal
+npm run test:api                          # needs .dev.vars (below) and test/mock-sheet.mjs running
+BASE=http://localhost:8787 python3 test/ui.py /tmp/shots   # Playwright, phone viewport, screenshots
+```
+`.dev.vars` for the API suites:
+```
+TELEGRAM_WEBHOOK_SECRET=testsecret
+BACKUP_URL=http://localhost:9999/exec
+BACKUP_SECRET=bksecret
+```
+Run `node test/mock-sheet.mjs &` before `test/backup.mjs`. Reset local data with `rm -rf .wrangler/state`.
+
+## Extension points (for later premium features)
+
+- Per-flat feature flags: add a column via a migration (e.g. `flats.plan TEXT DEFAULT 'free'`), return it in `/api/me`, gate on it in both `api()` and the page.
+- Uneven splits in the add form: the API already accepts `shares: [[id, amount], ...]`; only the UI is missing.
+- Other importers (Splitwise, CSV from banks): add a pure `parseX(text)` to `core.js` returning the same row shape as `parseTricount`; `/api/import` does not change.
+- Receipts and attachments: R2 bucket binding plus an `attachments` column; keep uploads out of D1.

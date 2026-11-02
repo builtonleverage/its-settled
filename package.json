@@ -1,0 +1,19 @@
+{
+  "name": "its-settled",
+  "version": "1.0.0",
+  "description": "Ad-free expense splitting for flatmates: invite codes, guests, monthly bills, offline-first, Telegram bot, Tricount import. One Cloudflare Worker on the free tier.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "build:demo": "node scripts/build-demo.mjs",
+    "test:core": "node test/core.test.mjs",
+    "test:api": "node test/e2e.mjs && node test/guests.mjs && node test/tg.mjs && node test/backup.mjs",
+    "test": "npm run test:core"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
