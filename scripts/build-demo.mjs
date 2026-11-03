@@ -16,7 +16,7 @@ if (!html.includes('const FORCE_DEMO = true;')) throw new Error('FORCE_DEMO flag
 
 if (fragment) {
   const head = html.match(/<head>([\s\S]*?)<\/head>/)[1], body = html.match(/<body>([\s\S]*?)<\/body>/)[1];
-  const keep = head.split('\n').filter(l => !/<meta charset|<meta name="viewport"|<meta name="theme-color"|rel="manifest"|rel="icon"/.test(l)).join('\n');
+  const keep = head.split('\n').filter(l => !/<meta charset|<meta name="viewport"|<meta name="theme-color"|rel="manifest"|rel="icon"|apple-touch-icon|web-app-capable|apple-mobile-web-app/.test(l)).join('\n');
   html = keep.trim() + '\n' + body.trim() + '\n';
 }
 fs.mkdirSync(new URL('../dist/', import.meta.url), { recursive: true });

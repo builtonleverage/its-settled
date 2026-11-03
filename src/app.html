@@ -3,8 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#eef1ec">
+<meta name="theme-color" content="#eef1ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1311" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="__APP_NAME__">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <title>__APP_NAME__</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -287,10 +293,13 @@ function topBar(v) {
   const pill = UI.syncing ? `<span class="pill"><span class="spin" style="width:10px;height:10px"></span>Syncing</span>`
     : !UI.online ? `<span class="pill off"><i></i>Offline${n ? ` · ${n} queued` : ''}</span>`
     : n ? `<span class="pill off"><i></i>${n} to sync</span>` : `<span class="pill"><i></i>Up to date</span>`;
-  return `<div class="top"><h1>${esc(v.flat.name)}</h1>${pill}</div>`;
+  const update = UI.update ? '<button class="pill" data-a="reload" style="background:var(--accent);color:var(--accent-ink)">Update ready · tap</button>' : '';
+  return `<div class="top"><h1>${esc(v.flat.name)}</h1>${update || pill}</div>`;
 }
 function banners(v) {
   let h = '';
+  if (canInstall() && !ls.get('is_install_hide') && UI.tab === 'home') h += `<div class="banner info"><span class="grow">Install ${esc(C.name)} on your phone. It opens like an app, faster, and works offline.</span>
+    <button class="btn sm" data-a="install">Install</button><button class="btn sm ghost" data-a="install-hide" aria-label="Not now">✕</button></div>`;
   if (DEMO) h += `<div class="banner info"><span class="grow">${amGuest(v) ? `Demo: you're seeing what guest <b>${esc(v.me.name)}</b> sees.` : 'Demo flat. Nothing leaves this browser. Try importing a Tricount CSV from the Flat tab.'}</span>
     ${amGuest(v) ? '<button class="btn sm" data-a="demo-view" data-id="">Back to flatmate</button>' : '<button class="btn sm ghost" data-a="demo-reset">Reset</button>'}</div>`;
   if (amGuest(v)) h += v.me.expired
@@ -425,6 +434,7 @@ function telegramCard(v, extra) {
 }
 function deviceCard(v) {
   return `<div class="sec"><h2>This device</h2></div><div class="card"><div class="btns">
+    ${canInstall() ? '<button class="btn sm" data-a="install">Install app</button>' : ''}
     ${DEMO ? '' : '<button class="btn sm ghost" data-a="device-link">Use on another device</button>'}
     ${DEMO && !amGuest(v) ? '<button class="btn sm ghost" data-a="demo-view" data-id="g1">See what a guest sees</button>' : ''}
     <button class="btn sm ghost" data-a="theme">Light / dark</button>
@@ -434,8 +444,14 @@ function landing() {
   const code = new URLSearchParams(location.search).get('code') || '';
   if (code) UI.landTab = 'join';
   const join = UI.landTab === 'join';
+  const linkCard = `<div class="card"><div class="t1">${standalone() ? 'Welcome back' : 'Already in a flat?'}</div>
+    <div class="t2 wrapt">${standalone() && isIOS ? 'If you copied your login link before installing, tap Paste. ' : ''}Sign in with your login link (Flat → Use on another device).</div>
+    <form data-f="link" style="margin-top:10px"><input class="in" id="l-link" name="link" placeholder="Paste your login link" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="btns" style="margin-top:10px"><button type="button" class="btn sm" data-a="paste-link">Paste</button><button class="btn sm ghost">Sign in</button></div></form></div>`;
+  const tip = canInstall() ? `<button class="btn ghost block" style="margin-top:8px" data-a="install">${isIOS ? 'Add to home screen' : 'Install app'}</button>` : '';
   return `<div class="wrap land"><div class="logo">${esc(C.name)}<span>.</span></div>
     <p class="lead">Split rent, maid, cook and every bill with your flatmates. No ads, no sign-up.</p>
+    ${standalone() ? linkCard : ''}
     <div class="card"><div class="tabs" role="tablist"><button class="${join ? 'on' : ''}" data-a="land" data-t="join">Join a flat</button><button class="${join ? '' : 'on'}" data-a="land" data-t="new">Start a flat</button></div>
     ${join ? `<form data-f="join"><label class="f" for="j-code">Invite code</label><input class="in" id="j-code" name="code" value="${esc(code)}" autocapitalize="characters" autocomplete="off" placeholder="e.g. K7M2QX" required>
       <label class="f" for="j-name">Your name</label><input class="in" id="j-name" name="name" autocomplete="given-name" placeholder="What flatmates call you" required>
@@ -443,7 +459,7 @@ function landing() {
     : `<form data-f="new"><label class="f" for="n-flat">Flat name</label><input class="in" id="n-flat" name="flat" placeholder="e.g. Flat 402" required>
       <label class="f" for="n-name">Your name</label><input class="in" id="n-name" name="name" autocomplete="given-name" required>
       <button class="btn block" style="margin-top:18px">Create flat</button><div class="t2 wrapt" style="margin-top:10px">You'll be the admin and approve who joins.</div></form>`}
-    </div><a href="/demo" class="btn ghost block">Try the demo, no invite needed</a></div>`;
+    </div>${standalone() ? '' : linkCard}<a href="/demo" class="btn ghost block">Try the demo, no invite needed</a>${tip}</div>`;
 }
 function pendingScreen(v) {
   return `<div class="wrap land"><div class="logo" style="font-size:34px">Almost in<span>.</span></div>
@@ -565,6 +581,18 @@ const SHEETS = {
       <label class="btn block">From a backup file (.json)<input type="file" accept=".json,application/json" data-a="restore-file" hidden></label>
       ${v.backup?.sheet ? '<button class="btn ghost block" style="margin-top:8px" data-a="restore-sheet">Latest copy from Google Sheet</button>' : ''}`;
   },
+  iosInstall(v) {
+    const signedIn = !!(token() && v?.me?.status === 'approved');
+    return `<h3>Add to your home screen</h3><div class="t2 wrapt" style="margin:6px 0 14px">iPhone apps installed from Safari keep their own sign-in, so copy your login link first.</div>
+      <div class="card">${[
+        ...(signedIn ? ['Tap <b>Copy my login link</b> below.'] : []),
+        'Tap the <b>Share</b> button in Safari (the square with an arrow).',
+        'Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.',
+        signedIn ? 'Open the app from your home screen and tap <b>Paste</b>.' : 'Open the app from your home screen and join or sign in there.',
+      ].map((t, i) => `<div class="row"><div class="ico" style="font-size:15px">${i + 1}</div><div class="grow t2 wrapt" style="color:var(--ink);font-size:14px">${t}</div></div>`).join('')}</div>
+      <div class="t2 wrapt" style="margin-bottom:14px">Opened this from WhatsApp or Instagram? Open it in Safari first (menu → Open in Safari).</div>
+      ${signedIn ? '<button class="btn block" data-a="copy-login">Copy my login link</button>' : ''}<button class="btn ghost block" style="margin-top:8px" data-a="close">Done</button>`;
+  },
   info(v, s) { return `<h3>${esc(s.title)}</h3><div class="t2 wrapt" style="margin:6px 0 14px">${s.body}</div>${s.extra || ''}<button class="btn ghost block" data-a="close">Done</button>`; },
 };
 // A login-link sheet with one-tap WhatsApp + copy.
@@ -572,6 +600,16 @@ function linkSheet(title, body, link, waText) {
   open({ type: 'info', title, body, extra: `<div class="btns" style="margin-bottom:12px"><a class="btn sm" href="${esc(waHref(waText))}" target="_blank" rel="noopener">Send on WhatsApp</a>
     <button class="btn sm ghost" data-a="copy" data-text="${esc(link)}">Copy link</button></div>` });
 }
+
+// ---------- INSTALL (PWA) ----------
+// Android/Chrome: capture the install prompt and offer our own button. iPhone: no prompt exists, so show steps.
+// iPhone home-screen apps get storage separate from Safari, hence "copy your login link" + Paste on first open.
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let installEvt = null;
+const canInstall = () => !DEMO && !standalone() && !!(installEvt || isIOS);
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; render(); });
+addEventListener('appinstalled', () => { installEvt = null; render(); toast('Installed. Open it from your home screen.'); });
 
 // ---------- DIALOGS ----------
 let toastT;
@@ -694,6 +732,17 @@ document.addEventListener('click', async e => {
     case 'bk-dl': try { await downloadBackup(); if (!FORCE_DEMO) toast('Backup downloaded'); } catch (err) { toast(err.offline ? "You're offline" : err.message); } break;
     case 'bk-restore': open({ type: 'restore' }); break;
     case 'restore-sheet': doRestore({ from: 'sheet' }); break;
+    case 'install':
+      if (installEvt) { const e2 = installEvt; installEvt = null; e2.prompt(); const c = await e2.userChoice.catch(() => null); if (c?.outcome !== 'accepted') { installEvt = e2; } render(); }
+      else if (isIOS) open({ type: 'iosInstall' });
+      break;
+    case 'install-hide': ls.set('is_install_hide', 1); render(); break;
+    case 'copy-login': copy(loginLink(token()), 'Login link copied. Now tap Share → Add to Home Screen.'); break;
+    case 'paste-link':
+      try { const t = await navigator.clipboard.readText(); $app.querySelector('#l-link').value = t; $app.querySelector('form[data-f=link]').requestSubmit(); }
+      catch { toast('Press and hold the box, then tap Paste'); $app.querySelector('#l-link').focus(); }
+      break;
+    case 'reload': location.reload(); break;
     case 'theme': {
       const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       const nx = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = nx; ls.set('is_theme', nx); break;
@@ -765,6 +814,12 @@ document.addEventListener('submit', async e => {
     if (!r) { btn.disabled = false; return; }
     linkSheet(`${name} is added`, `Send ${esc(name)} this link. They open it and they're in, seeing only entries they're part of.`, loginLink(r.token),
       `Hi ${name}! Track what we spend while you're here: ${loginLink(r.token)}`);
+  }
+  if (type === 'link') {
+    const v2 = f.link.value.trim(), m2 = v2.match(/#login=(\w{20,})/) || v2.match(/^(\w{20,})$/);
+    if (!m2) return toast("That isn't a login link. Copy it from Flat → Use on another device.");
+    ls.set(K.token, m2[1]); ls.set(K.cache, null); D = null; render(); await refresh();
+    if (token()) toast('Signed in');
   }
   if (type === 'join' || type === 'new') {
     btn.disabled = true;
@@ -910,8 +965,17 @@ async function demoServer(method, path, body = {}) {
   const th = ls.get('is_theme'); if (th) document.documentElement.dataset.theme = th;
   const h = location.hash.match(/^#login=(\w{20,})/);
   if (h && !DEMO) { ls.set(K.token, h[1]); ls.set(K.cache, null); D = null; history.replaceState(null, '', '/'); }
+  const action = new URLSearchParams(location.search).get('action'); // home-screen shortcuts
+  if (action) history.replaceState(null, '', '/');
+  const runAction = () => { const v = view(); if (action && v?.me?.status === 'approved' && !UI.sheet && !(amGuest(v) && v.me.expired)) open({ type: action === 'settle' ? 'settle' : 'add' }); };
   render();                    // instant, from cache
-  refresh().then(flush);       // then sync quietly
+  if (D) runAction();
+  refresh().then(() => { if (!UI.sheet) runAction(); flush(); });  // then sync quietly
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', e => { if (e.data === 'update-ready') { UI.update = true; render(); } });
+    const askUpdate = () => navigator.serviceWorker.controller?.postMessage('is-update-ready');
+    askUpdate(); setTimeout(askUpdate, 1500); // the background check may finish just after the page starts
+  }
   setInterval(() => { if (D?.me?.status === 'pending') refresh(); }, 6000);
   if ('serviceWorker' in navigator && !FORCE_DEMO) navigator.serviceWorker.register('/sw.js').catch(() => {});
 })();

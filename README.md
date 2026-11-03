@@ -14,6 +14,7 @@ One Cloudflare Worker on the free tier. No ads, no accounts, no app store.
 - **Telegram bot (optional).** Type `450 milk` to add an expense, `/bal` to see balances, `/undo` to take it back.
 - **Import from Tricount.** Upload the CSV export, match names, done. Exact per-person splits and dates are kept; importing the same file twice adds nothing. People who haven't joined yet claim their history when they're approved.
 - **Backups.** A nightly copy to a Google Sheet only you can open, in-app download and restore, plus Cloudflare D1's 30-day point-in-time recovery.
+- **Install it like an app.** On Android, tap **Install**. On iPhone, follow the in-app steps (Share → Add to Home Screen); the app copies your login link first so you stay signed in. It opens instantly, works offline, offers an *Update ready* tap after each deploy, and has long-press shortcuts for Add expense and Settle up on Android.
 - **Demo.** `/demo` runs a sample flat entirely in the browser, including the guest view.
 
 ## Deploy (about 10 minutes, needs a laptop)

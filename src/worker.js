@@ -3,6 +3,7 @@
 // that adds monthly bills and pushes backups. Read CLAUDE.md before changing anything.
 import APP from './app.html';
 import * as core from './core.js';
+import { PNG_ICONS } from './icons.js';
 
 const { toPaise, equalShares, involves, settlePlan } = core;
 
@@ -655,24 +656,58 @@ function askWhoPaid(env, due, reminder) {
 }
 
 // ---------- static assets ----------
-// Service worker: the app shell opens instantly and offline. API calls are never cached here;
-// the page keeps its own data cache and offline outbox in localStorage.
-const SW = `const C='its-settled-v1';
-self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.add('/')));self.skipWaiting()});
-self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))));self.clients.claim()});
-self.addEventListener('fetch',e=>{const u=new URL(e.request.url);
-  if(e.request.method!=='GET'||u.origin!==location.origin||u.pathname.startsWith('/api/'))return;
-  if(e.request.mode==='navigate'){e.respondWith(fetch(e.request).then(r=>{const cp=r.clone();caches.open(C).then(c=>c.put('/',cp));return r}).catch(()=>caches.match('/')));}
+// Service worker. Opens instantly: the app shell is served from the phone's cache while a fresh copy
+// is fetched in the background (stale-while-revalidate). If the fresh copy differs, open pages are told
+// so they can offer a reload. Fonts and icons are cache-first so the app looks right offline.
+// API calls are never cached here; the page keeps its own data cache and offline outbox in localStorage.
+const SW = `const C='its-settled-v2',F='its-settled-fonts-v1';
+self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(['/','/manifest.json','/icon-192.png','/icon-180.png'])));self.skipWaiting()});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C&&k!==F).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
+const upd=new Set(); // pages opened from an outdated cached shell (by client id)
+self.addEventListener('message',e=>{if(e.data==='is-update-ready'&&e.source&&upd.has(e.source.id))e.source.postMessage('update-ready')});
+const cacheFirst=(req,name)=>caches.match(req).then(hit=>hit||fetch(req).then(r=>{if(r.ok||r.type==='opaque'){const cp=r.clone();caches.open(name).then(c=>c.put(req,cp))}return r}));
+self.addEventListener('fetch',e=>{const req=e.request,u=new URL(req.url);
+  if(req.method!=='GET')return;
+  if(u.hostname==='fonts.googleapis.com'||u.hostname==='fonts.gstatic.com')return e.respondWith(cacheFirst(req,F));
+  if(u.origin!==location.origin||u.pathname.startsWith('/api/'))return;
+  if(req.mode==='navigate')return e.respondWith((async()=>{
+    const cached=await caches.match('/'),cid=e.resultingClientId,old=cached&&cached.clone(); // copy before the browser reads it
+    const fresh=fetch(req).then(async r=>{
+      if(r.ok&&(r.headers.get('content-type')||'').includes('text/html')){
+        const [a,b]=await Promise.all([r.clone().text(),old?old.text():null]);
+        await (await caches.open(C)).put('/',new Response(a,{headers:{'content-type':'text/html; charset=utf-8'}}));
+        if(cached&&a!==b&&cid){upd.add(cid);const c=await self.clients.get(cid);if(c)c.postMessage('update-ready')} // else the page asks once it starts
+      }return r});
+    if(cached){e.waitUntil(fresh.catch(()=>{}));return cached}
+    return fresh.catch(()=>new Response('You are offline and the app has not been opened here before.',{status:503,headers:{'content-type':'text/plain'}}));
+  })());
+  if(/^\\/(icon[\\w-]*\\.(png|svg)|manifest\\.json)$/.test(u.pathname))return e.respondWith(cacheFirst(req,C));
 });`;
 const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#1f6b55"/><path d="M146 268l74 74 146-170" fill="none" stroke="#fff" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+let PNGS = null; // decoded once per isolate
+const png = name => (PNGS ??= Object.fromEntries(Object.entries(PNG_ICONS).map(([k, b]) => [k, Uint8Array.from(atob(b), c => c.charCodeAt(0))])))[name];
+const manifest = env => ({
+  id: '/', name: cfg(env).name, short_name: cfg(env).name, description: 'Split rent, maid, cook and every bill with your flatmates. No ads.',
+  start_url: '/', scope: '/', display: 'standalone', background_color: '#eef1ec', theme_color: '#eef1ec',
+  icons: [
+    { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+  ],
+  shortcuts: [ // long-press the app icon (Android)
+    { name: 'Add expense', short_name: 'Add', url: '/?action=add', icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }] },
+    { name: 'Settle up', short_name: 'Settle', url: '/?action=settle', icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }] },
+  ],
+});
 
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     if (url.pathname === '/sw.js') return new Response(SW, { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     if (url.pathname === '/icon.svg') return new Response(ICON, { headers: { 'content-type': 'image/svg+xml', 'cache-control': 'max-age=86400' } });
-    if (url.pathname === '/manifest.json') return J({ name: cfg(env).name, short_name: cfg(env).name, start_url: '/', display: 'standalone',
-      background_color: '#eef1ec', theme_color: '#eef1ec', icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }] });
+    if (png(url.pathname.slice(1))) return new Response(png(url.pathname.slice(1)), { headers: { 'content-type': 'image/png', 'cache-control': 'max-age=86400' } });
+    if (url.pathname === '/manifest.json') return new Response(JSON.stringify(manifest(env)), { headers: { 'content-type': 'application/manifest+json', 'cache-control': 'max-age=3600' } });
     if (!url.pathname.startsWith('/api/'))
       return new Response(page(env), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' } });
     try { return await api(req, env, ctx, url); }

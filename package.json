@@ -11,6 +11,7 @@
     "build:demo": "node scripts/build-demo.mjs",
     "test:core": "node test/core.test.mjs",
     "test:api": "node test/e2e.mjs && node test/guests.mjs && node test/bills.mjs && node test/tg.mjs && node test/backup.mjs",
+    "test:pwa": "python3 test/pwa.py",
     "test": "npm run test:core"
   },
   "devDependencies": {
