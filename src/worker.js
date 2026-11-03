@@ -4,6 +4,7 @@
 import APP from './app.html';
 import * as core from './core.js';
 import { PNG_ICONS } from './icons.js';
+import { pushKeys, actionSig, sendPush } from './push.js';
 
 const { toPaise, equalShares, involves, settlePlan } = core;
 
@@ -70,9 +71,16 @@ const MIGRATIONS = [
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_dues_month ON bill_dues(recurring_id, ym)`,
     `CREATE INDEX IF NOT EXISTS idx_dues_flat ON bill_dues(flat_id, status)`,
   ],
+  [ // v3: push notifications (keys live in kv; one row per device subscription; per-person preferences)
+    `CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, member_id TEXT NOT NULL, flat_id TEXT NOT NULL,
+       p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+    `CREATE INDEX IF NOT EXISTS idx_push_member ON push_subs(member_id)`,
+    `ALTER TABLE members ADD COLUMN notify TEXT`,
+  ],
 ];
 const NUDGE_MS = 46 * 3600e3; // "every 2 days" with the daily run; a little under 48h so run-time jitter can't skip a day
-let schemaReady = false;
+let schemaReady = false, originSaved = false;
 async function ensureSchema(db) {
   if (schemaReady) return;
   await db.prepare(`CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL)`).run();
@@ -141,6 +149,53 @@ async function notifyFlat(env, flatId, text, exceptId = '', markup) {
     `SELECT tg_chat_id FROM members WHERE flat_id=? AND status='approved' AND role<>'guest' AND tg_chat_id IS NOT NULL AND id<>?`).bind(flatId, exceptId).all();
   await Promise.all(results.map(r => send(env, r.tg_chat_id, text, markup)));
 }
+// ---------- push notifications ----------
+// Kinds a person can switch off: members.notify is JSON like {"expense":false}; anything missing is on.
+const PUSH_KINDS = ['dues', 'join', 'expense', 'paid'];
+const wants = (notify, kind) => { try { return JSON.parse(notify || '{}')[kind] !== false; } catch { return true; } };
+// Only real browser push services (plus localhost for tests), so the Worker never posts to arbitrary URLs.
+const PUSH_HOSTS = /(^|\.)(fcm\.googleapis\.com|android\.googleapis\.com|push\.apple\.com|push\.services\.mozilla\.com|notify\.windows\.com)$/;
+const pushSubject = async db => (await db.prepare(`SELECT v FROM kv WHERE k='origin'`).first())?.v || 'mailto:push@its-settled.invalid';
+
+async function pushOne(env, sub, msg) {
+  const keys = await pushKeys(env.DB);
+  const status = await sendPush(keys, sub, { url: '/', ...msg }, await pushSubject(env.DB)).catch(() => 0);
+  if (status === 404 || status === 410) await env.DB.prepare(`DELETE FROM push_subs WHERE endpoint=?`).bind(sub.endpoint).run();
+  return status;
+}
+// Push to every device of these members who want this kind. build(memberId, keys) → message or null. Never throws.
+async function pushTo(env, memberIds, kind, build) {
+  try {
+    const ids = [...new Set(memberIds)].filter(Boolean);
+    if (!ids.length) return;
+    const rows = (await env.DB.prepare(`SELECT s.endpoint, s.p256dh, s.auth, s.member_id, m.notify FROM push_subs s JOIN members m ON m.id=s.member_id
+      WHERE s.member_id IN (SELECT value FROM json_each(?)) AND m.status='approved'`).bind(JSON.stringify(ids)).all()).results.filter(r => wants(r.notify, kind));
+    if (!rows.length) return;
+    const keys = await pushKeys(env.DB);
+    await Promise.all(rows.map(async r => { const msg = await build(r.member_id, keys); if (msg) await pushOne(env, r, msg); }));
+  } catch (e) { console.error('push', e); }
+}
+// "Asha added ₹450 · Milk" / "Paid by Asha · your share ₹150" to everyone involved except whoever added it.
+async function pushExpense(env, flatId, e, byId, opts = {}) {
+  const ms = await flatMembers(env.DB, flatId), name = id => ms.find(m => m.id === id)?.name || 'Someone';
+  const split = typeof e.split === 'string' ? JSON.parse(e.split) : e.split;
+  if (e.kind === 'settle') return pushTo(env, [split[0][0]].filter(id => id !== byId), 'paid', () => ({
+    title: `${name(e.paid_by)} paid you ${money(env, e.amount)}`, body: `Recorded in ${cfg(env).name}`, tag: opts.tag }));
+  return pushTo(env, [...split.map(x => x[0]), e.paid_by].filter(id => id !== byId), 'expense', id => {
+    const share = (split.find(x => x[0] === id) || [0, 0])[1];
+    return { title: `${opts.who || name(byId) + ' added'} ${money(env, e.amount)} · ${e.description}`, tag: opts.tag,
+      body: id === e.paid_by ? `Paid by you · you get back ${money(env, e.amount - share)}` : `Paid by ${name(e.paid_by)} · your share ${money(env, share)}` };
+  });
+}
+// After a "whoever pays" bill is claimed: Telegram line + push that replaces the "Who paid?" notification.
+async function afterClaim(env, flatId, byId, r) {
+  const payer = (await env.DB.prepare(`SELECT name FROM members WHERE id=?`).bind(r.paid_by).first())?.name || 'Someone';
+  await Promise.all([
+    notifyFlat(env, flatId, `✅ ${esc(payer)} paid <b>${money(env, r.amount)}</b> for ${esc(r.description)}`, byId),
+    pushExpense(env, flatId, { kind: 'expense', amount: r.amount, description: r.description, paid_by: r.paid_by, split: r.split }, byId, { tag: 'due-' + r.dueId, who: `${payer} paid` }),
+  ]);
+}
+
 const HELP = `Type an amount and what it was for:
 <code>450 milk</code>  → split equally
 <code>/bal</code>  → who owes whom
@@ -161,7 +216,39 @@ async function api(req, env, ctx, url) {
   await ensureSchema(db);
   const body = M === 'POST' ? await req.json().catch(() => ({})) : {};
 
+  if (!originSaved && /^https:|^http:\/\/(localhost|127\.0\.0\.1)/.test(url.origin)) {
+    await db.prepare(`INSERT OR IGNORE INTO kv (k, v) VALUES ('origin', ?)`).bind(url.origin).run(); originSaved = true;
+  }
   if (p.startsWith('/api/telegram/')) return telegram(env, ctx, p.split('/')[3], body);
+
+  // One-tap buttons on notifications ("I paid", Approve/Reject). The service worker has no login, so each
+  // notification carries a signature bound to that member and that item.
+  if (p === '/api/push/act' && M === 'POST') {
+    const { scope, id, m: mid, sig, action } = body;
+    const keys = await pushKeys(db);
+    if (!scope || !id || !mid || typeof sig !== 'string' || sig !== await actionSig(keys, String(scope), String(id), String(mid))) return err('This notification has expired. Open the app instead.', 403);
+    const who = await db.prepare(`SELECT * FROM members WHERE id=? AND status='approved' AND role<>'guest'`).bind(mid).first();
+    if (!who) return err('Not allowed', 403);
+    if (scope === 'pd' && action === 'paid') {
+      const due = await db.prepare(`SELECT flat_id FROM bill_dues WHERE id=?`).bind(id).first();
+      if (!due || due.flat_id !== who.flat_id) return err('This bill is no longer due', 404);
+      const r = await claimDue(env, id, who.flat_id, who.id, 0, who.id);
+      if (r.error) return err(r.error, r.status);
+      ctx.waitUntil(afterClaim(env, who.flat_id, who.id, r));
+      return J({ ok: true, text: `Marked paid: ${r.description} · ${money(env, r.amount)}` });
+    }
+    if (scope === 'ap' && (action === 'approve' || action === 'reject') && who.role === 'admin') {
+      const t = await db.prepare(`SELECT * FROM members WHERE id=? AND flat_id=?`).bind(id, who.flat_id).first();
+      if (!t || t.status !== 'pending') return err(`${t?.name || 'They'} ${t ? 'were already ' + t.status : 'are no longer waiting'}`, 409);
+      if (action === 'reject') { await db.prepare(`UPDATE members SET status='rejected' WHERE id=?`).bind(t.id).run(); return J({ ok: true, text: `${t.name} rejected` }); }
+      const ph = (await db.prepare(`SELECT id, name FROM members WHERE flat_id=? AND status='placeholder' AND role<>'guest'`).bind(who.flat_id).all()).results;
+      const same = ph.find(x => x.name.trim().toLowerCase() === t.name.trim().toLowerCase());
+      if (ph.length && !same) return err(`Open the app to approve ${t.name} and pick who they are from your imported history`, 409);
+      const r = await approve(db, t.id, who.flat_id, same?.id);
+      return J({ ok: true, text: r.linked ? `${t.name} approved and linked to their history` : `${t.name} approved` });
+    }
+    return err('Not allowed', 403);
+  }
 
   // One-time helper: registers the bot webhook against this deployment.
   if (p === '/api/setup-telegram') {
@@ -194,6 +281,9 @@ async function api(req, env, ctx, url) {
       .bind(mid, flat.id, name, 'member', 'pending', await sha(token), genCode(10), now()).run();
     ctx.waitUntil(notifyAdmins(env, flat.id, `🙋 <b>${esc(name)}</b> wants to join <b>${esc(flat.name)}</b>`,
       { inline_keyboard: [[{ text: '✅ Approve', callback_data: 'ap:' + mid }, { text: '❌ Reject', callback_data: 'rj:' + mid }]] }));
+    ctx.waitUntil(db.prepare(`SELECT id FROM members WHERE flat_id=? AND role='admin' AND status='approved'`).bind(flat.id).all().then(({ results }) =>
+      pushTo(env, results.map(r => r.id), 'join', async (aid, keys) => ({ title: `${name} wants to join ${flat.name}`, body: 'Approve them here or in the app.', tag: 'join-' + mid,
+        actions: [{ action: 'approve', title: '✅ Approve' }, { action: 'reject', title: '❌ Reject' }], act: { scope: 'ap', id: mid, m: aid, sig: await actionSig(keys, 'ap', mid, aid) } }))));
     return J({ token });
   }
 
@@ -213,13 +303,14 @@ async function api(req, env, ctx, url) {
       const host = members.find(m => m.id === me.host_id);
       return J({ me: pub, flat: { name: me.flat_name, simplify: 0, host: host?.name || null },
         members: members.filter(m => m.status !== 'pending' && (!isGuest(m) || m.id === me.id)).map(({ tg, ...m }) => m),
-        expenses: expenses.filter(e => involves(e, me.id)), recurring: [], bot: cfg(env).bot });
+        expenses: expenses.filter(e => involves(e, me.id)), recurring: [], bot: cfg(env).bot, push: { key: (await pushKeys(db)).pub, prefs: JSON.parse(me.notify || '{}') } });
     }
-    const [rec, dues] = await Promise.all([
+    const [rec, dues, keys] = await Promise.all([
       db.prepare(`SELECT * FROM recurring WHERE flat_id=? AND active=1 ORDER BY day`).bind(me.flat_id).all().then(r => r.results),
       db.prepare(`SELECT id, recurring_id, description, amount, created_at FROM bill_dues WHERE flat_id=? AND status='open' ORDER BY created_at`).bind(me.flat_id).all().then(r => r.results),
+      pushKeys(db),
     ]);
-    return J({ me: pub, flat: { name: me.flat_name, invite_code: me.invite_code, simplify: me.simplify }, members, expenses, recurring: rec, dues,
+    return J({ me: pub, flat: { name: me.flat_name, invite_code: me.invite_code, simplify: me.simplify }, members, expenses, recurring: rec, dues, push: { key: keys.pub, prefs: JSON.parse(me.notify || '{}') },
       bot: cfg(env).bot, backup: isAdmin ? { sheet: !!env.BACKUP_URL, last: me.last_backup } : null });
   }
 
@@ -263,6 +354,7 @@ async function api(req, env, ctx, url) {
     ctx.waitUntil(notifyFlat(env, me.flat_id, kind === 'settle'
       ? `🤝 ${esc(nameOf(paidBy))} paid ${esc(nameOf(split[0][0]))} <b>${money(env, amount)}</b>`
       : `🧾 ${esc(me.name)} added <b>${money(env, amount)}</b> · ${esc(description)} (paid by ${esc(nameOf(paidBy))})`, me.id));
+    ctx.waitUntil(pushExpense(env, me.flat_id, { kind, amount, description, paid_by: paidBy, split }, me.id));
     return J({ ok: true });
   }
 
@@ -273,6 +365,33 @@ async function api(req, env, ctx, url) {
     if (!r.meta.changes) return err('Only the person who added this, or the admin, can delete it', 403);
     // Deleting a claimed "whoever pays" entry reopens that month's bill.
     await db.prepare(`UPDATE bill_dues SET status='open', paid_by=NULL, expense_id=NULL, last_nudge=? WHERE expense_id=? AND flat_id=?`).bind(now(), m[1], me.flat_id).run();
+    return J({ ok: true });
+  }
+
+  // Push notifications: this device's subscription, and which kinds this person wants.
+  if (p === '/api/push/subscribe' && M === 'POST') {
+    const endpoint = String(body.endpoint || ''), k = body.keys || {};
+    let u = null; try { u = new URL(endpoint); } catch {}
+    const okHost = u && ((u.protocol === 'https:' && PUSH_HOSTS.test(u.hostname)) || (u.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(u.hostname)));
+    if (!okHost || endpoint.length > 1000 || !/^[\w-]{40,200}$/.test(k.p256dh || '') || !/^[\w-]{10,60}$/.test(k.auth || ''))
+      return err("This browser's notification details don't look right. Try turning notifications on again.");
+    await db.batch([
+      db.prepare(`INSERT INTO push_subs (endpoint, member_id, flat_id, p256dh, auth, created_at) VALUES (?,?,?,?,?,?)
+                  ON CONFLICT(endpoint) DO UPDATE SET member_id=excluded.member_id, flat_id=excluded.flat_id, p256dh=excluded.p256dh, auth=excluded.auth`)
+        .bind(endpoint, me.id, me.flat_id, k.p256dh, k.auth, now()),
+      db.prepare(`DELETE FROM push_subs WHERE member_id=? AND endpoint NOT IN (SELECT endpoint FROM push_subs WHERE member_id=? ORDER BY created_at DESC LIMIT 10)`).bind(me.id, me.id),
+    ]);
+    if (body.welcome) ctx.waitUntil(pushOne(env, { endpoint, p256dh: k.p256dh, auth: k.auth },
+      { title: 'Notifications are on', body: "You'll hear about bills and payments here." }));
+    return J({ ok: true });
+  }
+  if (p === '/api/push/unsubscribe' && M === 'POST') {
+    await db.prepare(`DELETE FROM push_subs WHERE endpoint=? AND member_id=?`).bind(String(body.endpoint || ''), me.id).run();
+    return J({ ok: true });
+  }
+  if (p === '/api/push/prefs' && M === 'POST') {
+    const off = Object.fromEntries(PUSH_KINDS.filter(k => body[k] === false).map(k => [k, false]));
+    await db.prepare(`UPDATE members SET notify=? WHERE id=?`).bind(JSON.stringify(off), me.id).run();
     return J({ ok: true });
   }
 
@@ -287,7 +406,7 @@ async function api(req, env, ctx, url) {
     const payer = res.includes(body.paidBy) ? body.paidBy : me.id;
     const r = await claimDue(env, m[1], me.flat_id, payer, toPaise(body.amount), me.id);
     if (r.error) return err(r.error, r.status);
-    ctx.waitUntil(notifyFlat(env, me.flat_id, `✅ ${esc(nameOf(payer))} paid <b>${money(env, r.amount)}</b> for ${esc(r.description)}`, me.id));
+    ctx.waitUntil(afterClaim(env, me.flat_id, me.id, r));
     return J({ ok: true });
   }
 
@@ -454,7 +573,7 @@ async function claimDue(env, dueId, flatId, payerId, amount, byId) {
     await db.prepare(`UPDATE bill_dues SET status='open', paid_by=NULL, expense_id=NULL WHERE id=? AND expense_id=?`).bind(dueId, eid).run();
     return { error: "This month's entry already exists. Delete it from Activity first.", status: 409 };
   }
-  return { ok: true, amount: amt, description: due.description };
+  return { ok: true, amount: amt, description: due.description, dueId, paid_by: payerId, split: equalShares(amt, want) };
 }
 
 // ---------- backup & restore ----------
@@ -535,7 +654,7 @@ async function telegram(env, ctx, secret, u) {
     if (who) {
       const r = await claimDue(env, dueId, due.flat_id, who.id, 0, who.id);
       note = r.error || `✅ ${who.name} paid ${money(env, r.amount)}`;
-      if (!r.error) ctx.waitUntil(notifyFlat(env, due.flat_id, `✅ ${esc(who.name)} paid <b>${money(env, r.amount)}</b> for ${esc(r.description)}`, who.id));
+      if (!r.error) ctx.waitUntil(afterClaim(env, due.flat_id, who.id, r));
     }
     await tg(env, 'answerCallbackQuery', { callback_query_id: cq.id, text: note });
     if (who && cq.message) await tg(env, 'editMessageText', { chat_id: cq.message.chat.id, message_id: cq.message.message_id, text: `${cq.message.text}\n\n${note}` });
@@ -596,6 +715,7 @@ async function telegram(env, ctx, secret, u) {
     const ids = isGuest(me) ? [me.id, ...(counted(ms).some(x => x.id === me.host_id) ? [me.host_id] : [])] : residentIds(ms);
     const description = clean(add[2], 80) || 'Expense';
     await insertExpense(db, { flat_id: me.flat_id, description, amount, paid_by: me.id, split: equalShares(amount, ids), created_by: me.id, source: 'telegram' }).run();
+    ctx.waitUntil(pushExpense(env, me.flat_id, { kind: 'expense', amount, description, paid_by: me.id, split: equalShares(amount, ids) }, me.id));
     await reply(`✅ ${money(env, amount)} · ${esc(description)} — split ${ids.length} ways (${money(env, Math.round(amount / ids.length))} each).\n/undo to remove · /bal for balances`);
     ctx.waitUntil(notifyFlat(env, me.flat_id, `🧾 ${esc(me.name)} added <b>${money(env, amount)}</b> · ${esc(description)}`, me.id));
     return done();
@@ -640,6 +760,7 @@ async function runRecurring(env, onlyFlat) {
         split: equalShares(r.amount, want), source: 'auto', ext_id: `rec:${r.id}:${ym}` }),
       db.prepare(`UPDATE recurring SET last_run=? WHERE id=?`).bind(ym, r.id),
     ]);
+    await pushExpense(env, r.flat_id, { kind: 'expense', amount: r.amount, description: `${r.description} · ${label}`, paid_by: r.paid_by, split: equalShares(r.amount, want) }, null, { who: 'Monthly bill:' });
     await notifyFlat(env, r.flat_id, `🔁 Monthly bill added: <b>${money(env, r.amount)}</b> · ${esc(r.description)} (paid by ${esc(ms.find(m => m.id === r.paid_by)?.name || '?')})`);
   }
   if (onlyFlat) return;
@@ -650,9 +771,16 @@ async function runRecurring(env, onlyFlat) {
     await db.prepare(`UPDATE bill_dues SET last_nudge=? WHERE id=?`).bind(now(), d.id).run();
   }
 }
-function askWhoPaid(env, due, reminder) {
-  return notifyFlat(env, due.flat_id, `${reminder ? '⏰ Still open' : '🔔 Due today'}: <b>${esc(due.description)}</b> · ${money(env, due.amount)}. Who paid?`,
-    '', { inline_keyboard: [[{ text: '✅ I paid', callback_data: 'pd:' + due.id }]] });
+async function askWhoPaid(env, due, reminder) {
+  const res = residentIds(await flatMembers(env.DB, due.flat_id));
+  await Promise.all([
+    notifyFlat(env, due.flat_id, `${reminder ? '⏰ Still open' : '🔔 Due today'}: <b>${esc(due.description)}</b> · ${money(env, due.amount)}. Who paid?`,
+      '', { inline_keyboard: [[{ text: '✅ I paid', callback_data: 'pd:' + due.id }]] }),
+    pushTo(env, res, 'dues', async (id, keys) => ({
+      title: reminder ? `Still open: ${due.description}` : `Who paid ${due.description}?`, body: `${money(env, due.amount)}. Tap I paid if it was you.`,
+      tag: 'due-' + due.id, actions: [{ action: 'paid', title: '✅ I paid' }],
+      act: { scope: 'pd', id: due.id, m: id, sig: await actionSig(keys, 'pd', due.id, id) } })),
+  ]);
 }
 
 // ---------- static assets ----------
@@ -660,7 +788,7 @@ function askWhoPaid(env, due, reminder) {
 // is fetched in the background (stale-while-revalidate). If the fresh copy differs, open pages are told
 // so they can offer a reload. Fonts and icons are cache-first so the app looks right offline.
 // API calls are never cached here; the page keeps its own data cache and offline outbox in localStorage.
-const SW = `const C='its-settled-v2',F='its-settled-fonts-v1';
+const SW = `const C='its-settled-v3',F='its-settled-fonts-v1';
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(['/','/manifest.json','/icon-192.png','/icon-180.png'])));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C&&k!==F).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 const upd=new Set(); // pages opened from an outdated cached shell (by client id)
@@ -682,6 +810,13 @@ self.addEventListener('fetch',e=>{const req=e.request,u=new URL(req.url);
     return fresh.catch(()=>new Response('You are offline and the app has not been opened here before.',{status:503,headers:{'content-type':'text/plain'}}));
   })());
   if(/^\\/(icon[\\w-]*\\.(png|svg)|manifest\\.json)$/.test(u.pathname))return e.respondWith(cacheFirst(req,C));
+});
+self.addEventListener('push',e=>{let d={};try{d=e.data.json()}catch(x){d={body:e.data?e.data.text():''}}
+  e.waitUntil(self.registration.showNotification(d.title||'New activity',{body:d.body||'',tag:d.tag,renotify:!!d.tag,icon:'/icon-192.png',badge:'/icon-192.png',data:d,actions:d.actions||[]}))});
+self.addEventListener('notificationclick',e=>{const d=e.notification.data||{};e.notification.close();
+  if(e.action&&d.act)return e.waitUntil(fetch('/api/push/act',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.assign({},d.act,{action:e.action}))})
+    .then(r=>r.json()).then(j=>self.registration.showNotification(j.ok?j.text:"Couldn't do that",{body:j.ok?'':(j.error||''),tag:d.tag,icon:'/icon-192.png'})).catch(()=>{}));
+  e.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(cs=>{const c=cs.find(x=>new URL(x.url).origin===location.origin);if(c){c.postMessage('refresh');return c.focus()}return self.clients.openWindow(d.url||'/')}));
 });`;
 const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#1f6b55"/><path d="M146 268l74 74 146-170" fill="none" stroke="#fff" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 let PNGS = null; // decoded once per isolate

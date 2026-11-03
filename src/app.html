@@ -239,7 +239,16 @@ window.addEventListener('online', () => { UI.online = true; flush(); refresh(); 
 window.addEventListener('offline', () => { UI.online = false; render(); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { flush(); refresh(); } });
 setInterval(() => { if (document.visibilityState === 'visible') { flush(); refresh(); } }, DEMO ? 60000 : 30000);
-function signOut() { ls.set(K.token, null); ls.set(K.cache, null); ls.set(K.q, null); D = null; Q = []; UI.sheet = null; $layer.innerHTML = ''; render(); }
+function signOut() {
+  // Stop this phone getting the signed-out person's notifications.
+  const t = token();
+  if (t && !DEMO && 'serviceWorker' in navigator && 'PushManager' in window) pushSub().then(sub => {
+    if (!sub) return;
+    fetch('/api/push/unsubscribe', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t }, body: JSON.stringify({ endpoint: sub.endpoint }) }).catch(() => {});
+    return sub.unsubscribe();
+  }).catch(() => {});
+  UI.pushOn = false;
+  ls.set(K.token, null); ls.set(K.cache, null); ls.set(K.q, null); D = null; Q = []; UI.sheet = null; $layer.innerHTML = ''; render(); }
 
 // ---------- SELECTORS ----------
 const counted = v => v.members.filter(m => m.status === 'approved' || m.status === 'placeholder'); // everyone with a balance
@@ -409,7 +418,7 @@ function flatTab(v) {
     <div class="t1">Simplify payments</div><div class="t2 wrapt">If A owes B and B owes C, A pays C directly. Same totals, fewer payments.${nOff > nOn ? ` Right now: <b>${nOn}</b> instead of <b>${nOff}</b>.` : ''}${admin ? '' : ' Only the admin can change this.'}</div></div>
     <input type="checkbox" class="switch" id="simplify" data-a="simplify" ${on ? 'checked' : ''} ${admin ? '' : 'disabled'} aria-label="Simplify payments"></label></div>`;
 
-  h += telegramCard(v, admin ? ' Join requests arrive there with Approve buttons.' : '');
+  h += notifyCard(v) + telegramCard(v, admin ? ' Join requests arrive there with Approve buttons.' : '');
   if (admin) {
     h += `<div class="sec"><h2>Import</h2></div><div class="card"><div class="t2 wrapt" style="margin-bottom:12px">Bring your history from Tricount (CSV export). Importing the same file again skips entries already here.</div>
       <button class="btn sm" data-a="import">Import CSV</button></div>`;
@@ -424,7 +433,23 @@ function flatTab(v) {
 function youTab(v) {
   return `<div class="card"><div class="t1">${esc(v.me.name)}<span class="badge">guest</span></div>
     <div class="t2 wrapt">${v.me.expired ? 'Your access ended. You can still see and settle what you owe.' : `Added by ${esc(v.flat.host || 'a flatmate')}${v.me.expires_at ? `, until ${dayLong(v.me.expires_at)}` : ''}.`} You see only entries you're part of.</div></div>`
-    + telegramCard(v, '') + deviceCard(v);
+    + notifyCard(v) + telegramCard(v, '') + deviceCard(v);
+}
+// Push notifications for this device. iPhone allows them only in the installed app (iOS 16.4+).
+function notifyCard(v) {
+  const prefs = v.push?.prefs || {};
+  const kinds = [['dues', '“Who paid?” for monthly bills', !amGuest(v)], ['join', 'Join requests', v.me.role === 'admin'],
+    ['expense', "New expenses you're part of", true], ['paid', 'Someone paid you', true]].filter(k => k[2]);
+  const toggles = kinds.map(([k, label]) => `<label class="row" for="np-${k}" style="cursor:pointer"><div class="grow" style="font-size:14px">${label}</div>
+    <input type="checkbox" class="switch" id="np-${k}" data-a="push-pref" data-k="${k}" ${prefs[k] !== false ? 'checked' : ''} aria-label="${esc(label)}"></label>`).join('');
+  let body;
+  if (!pushSupported() && !DEMO) body = isIOS && !standalone()
+    ? `On iPhone, notifications work once the app is on your home screen (iOS 16.4 or newer).${canInstall() ? '<div class="btns" style="margin-top:12px"><button class="btn sm" data-a="install">Add to home screen</button></div>' : ''}`
+    : "This browser can't show notifications. Telegram works everywhere.";
+  else if (!DEMO && Notification.permission === 'denied') body = 'Notifications are blocked for this app. Allow them in your phone or browser settings, then come back here.';
+  else if (UI.pushOn) body = `<div class="t1" style="margin-bottom:4px">✅ On for this phone</div>${toggles}<div class="btns" style="margin-top:12px"><button class="btn sm ghost" data-a="push-off">Turn off on this phone</button></div>`;
+  else body = `<div style="margin-bottom:12px">Get “Who paid?”, payments and new expenses as notifications, with one-tap buttons.</div><button class="btn sm" data-a="push-on">Turn on notifications</button>`;
+  return `<div class="sec"><h2>Notifications</h2></div><div class="card"><div class="t2 wrapt">${body}</div></div>`;
 }
 function telegramCard(v, extra) {
   const btn = C.bot && !DEMO
@@ -607,6 +632,9 @@ function linkSheet(title, body, link, waText) {
 const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 let installEvt = null;
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && (!isIOS || standalone());
+const keyBytes = k => { const t = k.replace(/-/g, '+').replace(/_/g, '/'); return Uint8Array.from(atob(t + '='.repeat((4 - t.length % 4) % 4)), c => c.charCodeAt(0)); };
+const pushSub = () => navigator.serviceWorker.ready.then(r => r.pushManager.getSubscription());
 const canInstall = () => !DEMO && !standalone() && !!(installEvt || isIOS);
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; render(); });
 addEventListener('appinstalled', () => { installEvt = null; render(); toast('Installed. Open it from your home screen.'); });
@@ -650,7 +678,7 @@ document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const a = el.dataset.a, v = view();
   if (a === 'scrim') { if (e.target === el) close(); return; }
-  if (['file', 'imp-map', 'restore-file', 'simplify'].includes(a)) return; // handled on change
+  if (['file', 'imp-map', 'restore-file', 'simplify', 'push-pref'].includes(a)) return; // handled on change
   switch (a) {
     case 'tab': UI.tab = el.dataset.t; render(); scrollTo(0, 0); break;
     case 'land': UI.landTab = el.dataset.t; render(); break;
@@ -743,6 +771,26 @@ document.addEventListener('click', async e => {
       catch { toast('Press and hold the box, then tap Paste'); $app.querySelector('#l-link').focus(); }
       break;
     case 'reload': location.reload(); break;
+    case 'push-on': {
+      if (DEMO) { UI.pushOn = true; render(); toast('Demo: your phone would now ask to allow notifications'); break; }
+      const perm = await Notification.requestPermission(); // must be the first await in the tap
+      if (perm !== 'granted') { toast(perm === 'denied' ? 'Notifications are blocked. Allow them in settings.' : 'Notifications were not turned on'); render(); break; }
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(v.push.key) });
+        await act('POST', '/api/push/subscribe', { ...sub.toJSON(), welcome: true }, 'Notifications on');
+        UI.pushOn = true; render();
+      } catch (err) { if (!err.status) toast("Couldn't turn on notifications on this phone. Try again."); }
+      break;
+    }
+    case 'push-off': {
+      if (!DEMO) {
+        const sub = await pushSub().catch(() => null);
+        if (sub) { await server('POST', '/api/push/unsubscribe', { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
+      }
+      UI.pushOn = false; render(); toast('Notifications off on this phone');
+      break;
+    }
     case 'theme': {
       const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       const nx = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = nx; ls.set('is_theme', nx); break;
@@ -757,6 +805,11 @@ document.addEventListener('click', async e => {
 document.addEventListener('change', async e => {
   const el = e.target, a = el.dataset.a;
   if (a === 'imp-map') { UI.imp.map[el.dataset.n] = el.value; renderSheet(); }
+  if (a === 'push-pref') {
+    const prefs = Object.fromEntries([...$app.querySelectorAll('[data-a=push-pref]')].map(x => [x.dataset.k, x.checked]));
+    if (D?.push) D.push.prefs = Object.fromEntries(Object.entries(prefs).filter(([, on]) => !on).map(([k]) => [k, false]));
+    act('POST', '/api/push/prefs', prefs, 'Saved').catch(() => {});
+  }
   if (a === 'simplify') {
     D.flat.simplify = el.checked ? 1 : 0; render();
     act('POST', '/api/flat', { simplify: el.checked }, el.checked ? 'Payments simplified' : 'Showing direct debts').catch(() => {});
@@ -864,9 +917,9 @@ async function demoServer(method, path, body = {}) {
   if (method === 'GET' && path === '/api/me') {
     save();
     if (guest) return JSON.parse(JSON.stringify({ me: meOut, flat: { name: S.flat.name, simplify: 0, host: S.members.find(x => x.id === me.host_id)?.name },
-      members: S.members.filter(x => x.status !== 'pending' && (!isGuest(x) || x.id === me.id)), expenses: S.expenses.filter(e => involves(e, me.id)), recurring: [], bot: null }));
+      members: S.members.filter(x => x.status !== 'pending' && (!isGuest(x) || x.id === me.id)), expenses: S.expenses.filter(e => involves(e, me.id)), recurring: [], bot: null, push: { key: null, prefs: S.prefs?.[me.id] || {} } }));
     return JSON.parse(JSON.stringify({ me: meOut, flat: S.flat, members: S.members, expenses: S.expenses, recurring: S.recurring,
-      dues: S.dues.filter(x => x.status === 'open'), bot: null, backup: admin ? { sheet: false, last: null } : null }));
+      dues: S.dues.filter(x => x.status === 'open'), bot: null, backup: admin ? { sheet: false, last: null } : null, push: { key: null, prefs: S.prefs?.[me.id] || {} } }));
   }
   if (method === 'POST' && path === '/api/demo/view') { S.viewAs = body.id || 'm1'; save(); return { ok: true }; }
   if (method === 'POST' && path === '/api/expenses') {
@@ -884,6 +937,9 @@ async function demoServer(method, path, body = {}) {
     S.expenses = S.expenses.filter(x => x.id !== m[1]);
     const due = S.dues.find(x => x.expense_id === m[1]); if (due) Object.assign(due, { status: 'open', paid_by: null, expense_id: null });
     save(); return { ok: true };
+  }
+  if (method === 'POST' && path === '/api/push/prefs') {
+    S.prefs ||= {}; S.prefs[me.id] = Object.fromEntries(Object.entries(body).filter(([, on]) => on === false).map(([k]) => [k, false])); save(); return { ok: true };
   }
   if (guest) fail('Guests can only add and settle their own entries');
   if (method === 'POST' && (m = path.match(/^\/api\/dues\/(\w+)\/(claim|skip)$/))) {
@@ -972,7 +1028,12 @@ async function demoServer(method, path, body = {}) {
   if (D) runAction();
   refresh().then(() => { if (!UI.sheet) runAction(); flush(); });  // then sync quietly
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', e => { if (e.data === 'update-ready') { UI.update = true; render(); } });
+    navigator.serviceWorker.addEventListener('message', e => { if (e.data === 'update-ready') { UI.update = true; render(); } if (e.data === 'refresh') refresh(); });
+    // Is this phone subscribed? Re-register quietly so the server always has the current subscription.
+    if (!DEMO && 'PushManager' in window) pushSub().then(sub => {
+      UI.pushOn = !!sub; render();
+      if (sub && token()) server('POST', '/api/push/subscribe', sub.toJSON()).catch(() => {});
+    }).catch(() => {});
     const askUpdate = () => navigator.serviceWorker.controller?.postMessage('is-update-ready');
     askUpdate(); setTimeout(askUpdate, 1500); // the background check may finish just after the page starts
   }
