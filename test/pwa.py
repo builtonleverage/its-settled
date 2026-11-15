@@ -60,7 +60,7 @@ with sync_playwright() as pw:
     ctx.set_offline(False)
 
     # 3. update-ready: make the cached shell differ from the server's, reopen, expect the pill
-    p.evaluate("""caches.open('its-settled-v2').then(async c=>{const r=await c.match('/');const t=await r.text();
+    p.evaluate("""caches.open('its-settled-v3').then(async c=>{const r=await c.match('/');const t=await r.text();
       await c.put('/',new Response(t+'<!-- old -->',{headers:{'content-type':'text/html; charset=utf-8'}}))})""")
     p.reload(); p.wait_for_selector('text=Update ready', timeout=8000); shot(p, 'pwa-1-update')
     ok(True, 'a new deploy shows "Update ready · tap" instead of reloading under you')

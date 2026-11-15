@@ -36,18 +36,18 @@ with sync_playwright() as pw:
     ok(p.eval_on_selector('[data-group=paid] .chip.on', 'e => e.dataset.id') == paid, 'rebuild keeps the "paid by" pick')
 
     # 3. a stray tap outside asks first; Cancel keeps everything
-    p.mouse.click(195, 30); p.wait_for_selector('.ask')
+    p.mouse.click(195, 30); p.wait_for_selector('.ask:not(.out)')
     ok(p.locator('.sheet #a-amt').count() == 1, 'tap outside with typed text does not close the sheet')
-    p.click('.ask [data-r="0"]'); p.wait_for_timeout(200)
+    p.click('.ask:not(.out) [data-r="0"]'); p.wait_for_timeout(200)
     ok(p.input_value('#a-amt') == '450' and p.input_value('#a-desc') == 'Groceries', 'Cancel keeps the typed text')
 
     # 4. confirming discards
-    p.mouse.click(195, 30); p.wait_for_selector('.ask'); p.click('.ask [data-r="1"]'); p.wait_for_timeout(300)
-    ok(p.locator('.scrim').count() == 0, 'Discard closes the sheet')
+    p.mouse.click(195, 30); p.wait_for_selector('.ask:not(.out)'); p.click('.ask:not(.out) [data-r="1"]'); p.wait_for_timeout(300)
+    p.wait_for_timeout(150); ok(p.locator('.scrim').count() == 0, 'Discard closes the sheet')
 
     # 5. an untouched sheet still closes with one tap
     p.click('.fab'); p.wait_for_selector('#a-amt'); p.mouse.click(195, 30); p.wait_for_timeout(300)
-    ok(p.locator('.scrim').count() == 0 and p.locator('.ask').count() == 0, 'empty sheet closes on a tap outside, no prompt')
+    p.wait_for_timeout(150); ok(p.locator('.scrim').count() == 0 and p.locator('.ask').count() == 0, 'empty sheet closes on a tap outside, no prompt')
 
     # 6. backdating: the date lands the entry on that day; today is the default; the future is refused
     p.click('.fab'); p.wait_for_selector('#a-date')
@@ -62,6 +62,20 @@ with sync_playwright() as pw:
     p.click('.fab'); p.wait_for_selector('#a-date'); p.fill('#a-amt', '10'); p.fill('#a-desc', 'Future test')
     p.fill('#a-date', p.evaluate('ymd(Date.now() + 2 * 864e5)')); p.click('form[data-f=add] >> text=Save'); p.wait_for_timeout(400)
     ok(p.locator('#a-date').count() == 1 and p.locator('.row', has_text='Future test').count() == 0, 'a future date is refused and nothing is added')
+
+    p.evaluate('close()'); p.wait_for_timeout(350)  # leave the refused future-date sheet
+    # 7. Add sheet shows each share and the total on Save; a swipe down closes an empty sheet
+    p.click('.fab'); p.wait_for_selector('#a-amt'); p.wait_for_timeout(450); p.fill('#a-amt', '900')
+    note = p.inner_text('.split-note'); btn = p.inner_text('[data-save]')
+    ok('each' in note and '900' in btn, f'live share preview: {note!r} / {btn!r}')
+    p.fill('#a-amt', ''); p.fill('#a-desc', '')
+    p.evaluate("""() => { const sh = document.querySelector('.scrim .sheet'), r = sh.getBoundingClientRect(), x = r.left + 100;
+      const T = y => new Touch({ identifier: 1, target: sh, clientX: x, clientY: y });
+      sh.dispatchEvent(new TouchEvent('touchstart', { touches: [T(r.top + 30)], bubbles: true }));
+      for (let i = 1; i <= 8; i++) sh.dispatchEvent(new TouchEvent('touchmove', { touches: [T(r.top + 30 + i * 40)], bubbles: true, cancelable: true }));
+      sh.dispatchEvent(new TouchEvent('touchend', { touches: [], bubbles: true })); }""")
+    p.wait_for_timeout(450)
+    ok(p.locator('.scrim').count() == 0, 'swiping the sheet down closes it')
 
     ok(not errors, f'no JS errors {errors}')
     br.close()

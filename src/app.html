@@ -22,6 +22,7 @@
 :root{--bg:#eef1ec;--card:#fbfcfa;--ink:#18201c;--muted:#5f6a63;--faint:#8b958e;--line:#dde3dc;--chip:#e3e8e2;
   --accent:#1f6b55;--accent-ink:#fff;--accent-soft:#d6e9e0;--pos:#1f6b55;--neg:#b0432c;--neg-soft:#f5e1da;--warn:#865b0d;--warn-soft:#f3e8cf;
   --scrim:rgba(8,14,11,.45);--sh:0 1px 2px rgba(20,35,28,.05),0 6px 20px rgba(20,35,28,.06);
+  --spring:cubic-bezier(.32,.72,0,1);--ease:cubic-bezier(.2,.8,.2,1);
   --display:'Bricolage Grotesque',Figtree,system-ui,sans-serif;--body:Figtree,system-ui,-apple-system,'Segoe UI',sans-serif;color-scheme:light}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f1311;--card:#171d1a;--ink:#e9efea;--muted:#a0aca4;--faint:#727d76;--line:#26302b;--chip:#202824;
   --accent:#5cc199;--accent-ink:#0b1712;--accent-soft:#173328;--pos:#6fd0a6;--neg:#f08b70;--neg-soft:#3a201a;--warn:#e2b45a;--warn-soft:#33281a;--scrim:rgba(0,0,0,.6);--sh:none;color-scheme:dark}}
@@ -84,14 +85,44 @@ label.f{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:1
 .nav button svg{width:22px;height:22px}
 .nav .fab{width:56px;height:56px;border-radius:18px;background:var(--accent);color:var(--accent-ink);margin:-26px auto 0;box-shadow:0 6px 18px rgba(31,107,85,.35);justify-content:center}
 .nav .fab svg{width:26px;height:26px}
-.scrim,.ask{position:fixed;inset:0;background:var(--scrim);z-index:20;display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
+.scrim,.ask{position:fixed;inset:0;background:var(--scrim);z-index:20;display:flex;align-items:flex-end;justify-content:center;animation:scrimin .25s ease}
+@keyframes scrimin{from{background:transparent}} /* fade the dim only, so the sheet itself is never see-through */
 .ask{z-index:30}
-.sheet{background:var(--card);width:100%;max-width:520px;max-height:92dvh;overflow:auto;border-radius:22px 22px 0 0;padding:10px max(18px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px));animation:up .2s cubic-bezier(.2,.8,.2,1)}
+.sheet{background:var(--card);width:100%;max-width:520px;max-height:92dvh;overflow:auto;border-radius:22px 22px 0 0;padding:10px max(18px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px));animation:up .42s var(--spring);overscroll-behavior:contain}
 .grab{width:40px;height:4px;border-radius:4px;background:var(--line);margin:0 auto 12px}
 .sheet h3{font-size:20px;font-weight:700;margin-bottom:4px}
-@keyframes up{from{transform:translateY(40px);opacity:.4}} @keyframes fade{from{opacity:0}}
-@media (prefers-reduced-motion:reduce){*{animation:none!important}}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:12px;font-size:14px;font-weight:600;z-index:40;max-width:calc(100% - 32px);animation:fade .15s}
+@keyframes up{from{transform:translateY(100%)}} @keyframes fade{from{opacity:0}}
+/* Motion: sheets spring up and slide away, taps press in, tabs rise in, new entries glow. All of it switches off with reduced motion. */
+.scrim.out,.ask.out{animation:fadeout .24s ease forwards;pointer-events:none}
+.scrim.out .sheet,.ask.out .sheet{animation:down .24s cubic-bezier(.4,0,1,1) forwards}
+@keyframes down{to{transform:translateY(100%)}} @keyframes fadeout{to{opacity:0}}
+.sheet.drag{transition:none}
+.btn,.chip,.tabs button,.row.tap,.ico,.nav button svg{transition:transform .16s var(--ease),background-color .18s,border-color .18s,color .18s,box-shadow .18s}
+.btn:active,.chip:active,.tabs button:active{transform:scale(.96)}
+.row.tap:active{transform:scale(.985)} .row.tap:active .ico{transform:scale(.9)}
+.nav button:active svg{transform:scale(.86)}
+.nav .fab{transition:transform .22s var(--spring),box-shadow .22s} .nav .fab:active{transform:scale(.9);box-shadow:0 2px 8px rgba(31,107,85,.3)}
+.nav .fab svg{transition:transform .3s var(--spring)} .nav .fab:active svg{transform:rotate(90deg)}
+.chip.on{animation:pop .3s var(--spring)}
+@keyframes pop{40%{transform:scale(1.07)}}
+.enter>:not(.top){animation:rise .5s var(--spring) both}
+.enter>:nth-child(3){animation-delay:.03s} .enter>:nth-child(4){animation-delay:.06s} .enter>:nth-child(5){animation-delay:.09s}
+.enter>:nth-child(6){animation-delay:.12s} .enter>:nth-child(n+7){animation-delay:.15s}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}}
+.nav.enter .on svg{animation:pop .4s var(--spring)}
+.row.new{animation:glow 1.8s ease;border-radius:12px}
+@keyframes glow{0%{background:var(--accent-soft);transform:scale(.98)}20%{transform:none}100%{background:transparent}}
+.mark{display:block;flex:none;border-radius:22%}
+.mark.draw .s1,.mark.draw .s2{stroke-dasharray:1;stroke-dashoffset:1;animation:draw .32s .2s var(--ease) forwards}
+.mark.draw .s2{animation-duration:.42s;animation-delay:.48s}
+@keyframes draw{to{stroke-dashoffset:0}}
+.ttl{display:flex;align-items:center;gap:10px;min-width:0}
+.logo-row{display:flex;align-items:center;gap:14px}
+.split-note{font-size:13px;color:var(--muted);margin-top:8px;min-height:19px;font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.mark.draw .s1,.mark.draw .s2{stroke-dashoffset:0}}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:12px;font-size:14px;font-weight:600;z-index:40;max-width:calc(100% - 32px);animation:toastin .36s var(--spring);box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.toast.out{animation:toastout .2s ease forwards}
+@keyframes toastin{from{transform:translate(-50%,18px) scale(.94);opacity:0}} @keyframes toastout{to{transform:translate(-50%,10px);opacity:0}}
 .banner{display:flex;gap:10px;align-items:center;background:var(--warn-soft);color:var(--warn);border-radius:14px;padding:10px 12px;font-size:13px;font-weight:600;margin-bottom:12px}
 .banner.info{background:var(--accent-soft);color:var(--ink)}
 .code{font-family:var(--display);font-size:28px;font-weight:700;letter-spacing:.12em}
@@ -177,7 +208,11 @@ const I = {
 // ---------- STATE & SYNC ----------
 let D = ls.get(K.cache);   // last server snapshot (renders instantly on open)
 let Q = ls.get(K.q, []);    // offline outbox: [{type:'add', body} | {type:'del', id}]
-const UI = { tab: 'home', sheet: null, syncing: false, online: navigator.onLine, landTab: 'join', imp: null };
+const UI = { tab: 'home', sheet: null, syncing: false, online: navigator.onLine, landTab: 'join', imp: null, enter: true, flash: null, heroV: 0 };
+// The app mark: two strokes that meet. Same drawing as icon.svg and the PNG icons.
+const mark = (px, cls = '') => `<svg class="mark ${cls}" width="${px}" height="${px}" viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="mg${px}" x2="0" y2="1"><stop offset="0" stop-color="#2e8f70"/><stop offset="1" stop-color="#155241"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#mg${px})"/><g fill="none" stroke-width="60" stroke-linecap="round"><path class="s1" pathLength="1" d="M150 266l72 72" stroke="#9ee2c4"/><path class="s2" pathLength="1" d="M222 338l146-162" stroke="#fff"/></g></svg>`;
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const buzz = (ms = 8) => { try { navigator.vibrate?.(ms); } catch { /* not supported */ } }; // Android only; iPhone ignores it
 const token = () => ls.get(K.token);
 
 async function server(method, path, body) {
@@ -292,7 +327,10 @@ function render() {
   if (v.me.status === 'rejected') { $app.innerHTML = `<div class="wrap land"><h1>Request declined</h1><p class="lead">The admin of ${esc(v.flat.name)} didn't approve this request.</p><button class="btn" data-a="signout">Start over</button></div>`; renderSheet(); return; }
   if (amGuest(v) && UI.tab === 'bills') UI.tab = 'home';
   const body = UI.tab === 'bills' ? billsTab(v) : UI.tab === 'flat' ? (amGuest(v) ? youTab(v) : flatTab(v)) : homeTab(v);
-  $app.innerHTML = `<div class="wrap">${topBar(v)}${banners(v)}${body}</div>${nav(v)}`;
+  // Entrance motion only on first paint and tab changes, never on the background re-render every 30s.
+  const enter = UI.enter && !calm(); UI.enter = false;
+  $app.innerHTML = `<div class="wrap${enter ? ' enter' : ''}">${topBar(v)}${banners(v)}${body}</div>${nav(v).replace('class="nav"', `class="nav${enter ? ' enter' : ''}"`)}`;
+  countHero();
   renderSheet();
 }
 function topBar(v) {
@@ -301,7 +339,7 @@ function topBar(v) {
     : !UI.online ? `<span class="pill off"><i></i>Offline${n ? ` · ${n} queued` : ''}</span>`
     : n ? `<span class="pill off"><i></i>${n} to sync</span>` : `<span class="pill"><i></i>Up to date</span>`;
   const update = UI.update ? '<button class="pill" data-a="reload" style="background:var(--accent);color:var(--accent-ink)">Update ready · tap</button>' : '';
-  return `<div class="top"><h1>${esc(v.flat.name)}</h1>${update || pill}</div>`;
+  return `<div class="top"><div class="ttl">${mark(28)}<h1>${esc(v.flat.name)}</h1></div>${update || pill}</div>`;
 }
 function banners(v) {
   let h = '';
@@ -331,7 +369,7 @@ function homeTab(v) {
     <div class="grow"><div class="t1">${esc(d.description)} · ${fmt(d.amount)}</div><div class="t2">Due since ${day(d.created_at)}. Who paid?</div></div></div>
     <div class="btns" style="margin-top:12px"><button class="btn sm" data-a="due-pay" data-id="${d.id}">I paid</button><button class="btn sm ghost" data-a="due-skip" data-id="${d.id}">Skip this month</button></div></div>`).join('');
   h += `<div class="card hero"><div class="lbl">${mine >= 100 ? 'Overall, you get back' : mine <= -100 ? 'Overall, you owe' : 'Your balance'}</div>
-    <div class="big ${mine >= 100 ? 'pos' : mine <= -100 ? 'neg' : ''}">${Math.abs(mine) < 100 ? 'All settled' : fmt(mine)}</div>
+    <div class="big ${mine >= 100 ? 'pos' : mine <= -100 ? 'neg' : ''}" data-v="${Math.abs(mine) < 100 ? '' : mine}">${Math.abs(mine) < 100 ? 'All settled' : fmt(mine)}</div>
     <div class="t2">${amGuest(v) ? `${v.expenses.length} shared ${v.expenses.length === 1 ? 'entry' : 'entries'}` : `${residents(v).length} flatmates · ${v.expenses.length} entries`}</div></div>`;
   if (plan.length) {
     const guestIds = new Set(counted(v).filter(isGuest).map(m => m.id));
@@ -362,7 +400,7 @@ function expenseRow(e, v, nm) {
   else a2 = `<span class="faint">not involved</span>`;
   const who = e.kind === 'settle' ? 'Payment' : `${esc(nm[e.paid_by] || 'Someone')} paid`;
   const tag = e.pending ? ' · <b style="color:var(--warn)">waiting to sync</b>' : e.source === 'auto' ? ' · monthly' : '';
-  return `<button class="row tap" data-a="exp" data-id="${e.id}"><div class="ico">${icon(e)}</div><div class="grow"><div class="t1">${esc(e.description)}</div>
+  return `<button class="row tap${UI.flash && e.id === 'tmp_' + UI.flash ? ' new' : ''}" data-a="exp" data-id="${e.id}"><div class="ico">${icon(e)}</div><div class="grow"><div class="t1">${esc(e.description)}</div>
     <div class="t2">${who} · ${day(e.created_at)}${tag}</div></div>
     <div class="amt"><div class="a1">${e.amount < 0 ? '−' : ''}${fmt(e.amount)}</div><div class="a2">${a2}</div></div></button>`;
 }
@@ -456,7 +494,7 @@ function landing() {
     <form data-f="link" style="margin-top:10px"><input class="in" id="l-link" name="link" placeholder="Paste your login link" autocomplete="off" autocapitalize="off" spellcheck="false">
     <div class="btns" style="margin-top:10px"><button type="button" class="btn sm" data-a="paste-link">Paste</button><button class="btn sm ghost">Sign in</button></div></form></div>`;
   const tip = canInstall() ? `<button class="btn ghost block" style="margin-top:8px" data-a="install">${isIOS ? 'Add to home screen' : 'Install app'}</button>` : '';
-  return `<div class="wrap land"><div class="logo">${esc(C.name)}<span>.</span></div>
+  return `<div class="wrap land"><div class="logo-row">${mark(56, 'draw')}<div class="logo">${esc(C.name)}<span>.</span></div></div>
     <p class="lead">Split rent, maid, cook and every bill with your flatmates. No ads, no sign-up.</p>
     ${standalone() ? linkCard : ''}
     <div class="card"><div class="tabs" role="tablist"><button class="${join ? 'on' : ''}" data-a="land" data-t="join">Join a flat</button><button class="${join ? '' : 'on'}" data-a="land" data-t="new">Start a flat</button></div>
@@ -475,9 +513,27 @@ function pendingScreen(v) {
     <button class="btn ghost" data-a="leave">Cancel request</button></div>`;
 }
 
+// The balance rolls from its last value to the new one when it changes (first open: from zero).
+function countHero() {
+  const el = document.querySelector('.hero .big[data-v]'); if (!el) { UI.heroV = 0; return; }
+  const to = +el.dataset.v, from = UI.heroV; UI.heroV = to;
+  if (from === to || calm() || Math.sign(from) * Math.sign(to) < 0) return;
+  const t0 = performance.now(), dur = 650;
+  const step = now => { if (!el.isConnected) return; const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmt(Math.round(from + (to - from) * e)); if (k < 1) requestAnimationFrame(step); else el.textContent = fmt(to); };
+  requestAnimationFrame(step);
+}
 // ---------- SHEETS ----------
 function open(sheet) { $layer.innerHTML = ''; UI.sheet = sheet; renderSheet(); }
-function close() { UI.sheet = null; renderSheet(); }
+let closeT;
+function close() {
+  UI.sheet = null; sheetHtml = '';
+  const sc = $layer.querySelector('.scrim:not(.out)');
+  if (!sc || calm()) { $layer.innerHTML = ''; return; }
+  if (sc.contains(document.activeElement)) document.activeElement.blur(); // drop the keyboard with the sheet
+  sc.classList.add('out'); clearTimeout(closeT);
+  closeT = setTimeout(() => { if (sc.isConnected) sc.remove(); }, 250);
+}
 // A sheet is rebuilt whenever render() runs (every background sync, 30s tick, online event, tab focus).
 // Rebuilding must never throw away what the person is typing, so: skip the rebuild when the markup is
 // unchanged, and when it did change, carry typed text, toggles, chip choices and focus across.
@@ -514,22 +570,31 @@ function restoreFields(root, snap) {
     if (el) { el.focus({ preventScroll: true }); try { el.setSelectionRange(snap.focus.s, snap.focus.e); } catch { /* not a text field */ } }
   }
 }
+// Add sheet: show each person's share and the total on the Save button as you type.
+function addPreview() {
+  const f = $layer.querySelector('.scrim:not(.out) form[data-f=add]'); if (!f) return;
+  const amt = toPaise(f.amount.value) || 0, ids = picked(f, 'split'), btn = f.querySelector('[data-save]'), note = f.querySelector('.split-note');
+  btn.textContent = amt > 0 ? `Save ${fmt(amt)}` : 'Save';
+  note.textContent = amt > 0 && ids.length > 1 ? `${fmt(equalShares(amt, ids)[0][1])} each · ${ids.length} people` : amt > 0 && ids.length === 1 ? 'One person carries all of it' : '';
+}
+document.addEventListener('input', e => { if (e.target.closest('form[data-f=add]')) addPreview(); });
 // True when the open sheet has text the person typed and hasn't saved.
 const sheetDirty = () => [...$layer.querySelectorAll('.sheet input:not([type=file]):not([type=checkbox]):not([type=radio]),.sheet textarea')]
   .some(f => f.value.trim() !== f.defaultValue.trim());
 function renderSheet() {
-  if (!UI.sheet) { $layer.innerHTML = ''; sheetHtml = ''; return; }
+  if (!UI.sheet) { $layer.querySelectorAll('.scrim:not(.out)').forEach(n => n.remove()); sheetHtml = ''; return; } // let a closing sheet finish sliding away
   const v = view(), s = UI.sheet;
   const html = SHEETS[s.type](v, s);
-  const existing = $layer.querySelector('.sheet');
+  const existing = $layer.querySelector('.scrim:not(.out) .sheet');
   if (existing) {
     if (html === sheetHtml) return; // nothing changed: leave typed text, chips and the keyboard alone
     const keep = snapFields(existing), top = existing.scrollTop;
     existing.innerHTML = `<div class="grab"></div>${html}`; // update in place, no re-animation
-    restoreFields(existing, keep); existing.scrollTop = top;
+    restoreFields(existing, keep); existing.scrollTop = top; addPreview();
   } else {
     $layer.innerHTML = `<div class="scrim" data-a="scrim"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`;
     const auto = $layer.querySelector('[autofocus]'); if (auto) setTimeout(() => auto.focus(), 60);
+    addPreview();
   }
   sheetHtml = html;
 }
@@ -547,7 +612,8 @@ const SHEETS = {
       <label class="f" for="a-date">Date</label><input class="in" type="date" id="a-date" name="date" value="${ymd(Date.now())}" min="${ymd(Date.now() - BACKDATE_DAYS * 864e5)}" max="${ymd(Date.now())}" required>
       <label class="f">Paid by</label>${chips(main, [v.me.id], 'paid', false, extra)}
       <label class="f">Split equally between</label>${chips(main, split, 'split', true, extra)}
-      <button class="btn block" style="margin-top:20px">Save</button></form>`;
+      <div class="split-note" aria-live="polite"></div>
+      <button class="btn block" style="margin-top:14px" data-save>Save</button></form>`;
   },
   settle(v, s) {
     const { main, extra } = pickers(v);
@@ -665,14 +731,14 @@ addEventListener('appinstalled', () => { installEvt = null; render(); toast('Ins
 
 // ---------- DIALOGS ----------
 let toastT;
-function toast(msg) { clearTimeout(toastT); document.querySelector('.toast')?.remove(); const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg; document.body.appendChild(t); toastT = setTimeout(() => t.remove(), 2800); }
+function toast(msg) { clearTimeout(toastT); document.querySelector('.toast')?.remove(); const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg; document.body.appendChild(t); toastT = setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), calm() ? 0 : 200); }, 2800); }
 // In-app confirm (browser confirm() is blocked in some in-app browsers and embeds).
 function ask(text, okLabel = 'Confirm', danger = false) {
   return new Promise(res => {
     const d = document.createElement('div'); d.className = 'ask';
     d.innerHTML = `<div class="sheet" role="alertdialog" aria-modal="true"><div class="grab"></div><h3 style="font-size:18px;margin-bottom:16px">${esc(text)}</h3>
       <div class="btns" style="flex-wrap:nowrap"><button class="btn ghost block" data-r="0">Cancel</button><button class="btn block${danger ? ' danger' : ''}" data-r="1">${esc(okLabel)}</button></div></div>`;
-    d.addEventListener('click', e => { e.stopPropagation(); const b = e.target.closest('[data-r]'); if (b || e.target === d) { d.remove(); res(b?.dataset.r === '1'); } });
+    d.addEventListener('click', e => { e.stopPropagation(); const b = e.target.closest('[data-r]'); if (b || e.target === d) { d.classList.add('out'); setTimeout(() => d.remove(), calm() ? 0 : 240); res(b?.dataset.r === '1'); } });
     document.body.appendChild(d); d.querySelector('[data-r="1"]').focus();
   });
 }
@@ -696,6 +762,32 @@ async function doRestore(payload) {
   if (r) { close(); UI.tab = 'home'; render(); toast(`Restored ${r.expenses} entries and ${r.recurring} monthly bills`); }
 }
 
+// Swipe a sheet down to close it (from its top, or anywhere once it's scrolled to the top).
+let drag = null;
+$layer.addEventListener('touchstart', e => {
+  const sh = e.target.closest('.scrim:not(.out) .sheet');
+  drag = sh && sh.scrollTop <= 0 && e.touches.length === 1 ? { sh, y: e.touches[0].clientY, dy: 0, on: false, vy: 0, t: e.timeStamp } : null;
+}, { passive: true });
+$layer.addEventListener('touchmove', e => {
+  if (!drag) return;
+  const dy = e.touches[0].clientY - drag.y;
+  if (!drag.on) { if (dy > 10 && drag.sh.scrollTop <= 0) { drag.on = true; drag.sh.classList.add('drag'); drag.y += 10; } else if (dy < -4) { drag = null; return; } else return; }
+  e.preventDefault();
+  const d = Math.max(0, e.touches[0].clientY - drag.y);
+  drag.vy = (d - drag.dy) / Math.max(1, e.timeStamp - drag.t); drag.t = e.timeStamp; drag.dy = d;
+  drag.sh.style.transform = `translateY(${d}px)`;
+}, { passive: false });
+const endDrag = async () => {
+  const d = drag; drag = null; if (!d?.on) return;
+  const sh = d.sh; sh.classList.remove('drag');
+  const back = () => { sh.style.transition = 'transform .35s var(--spring)'; sh.style.transform = ''; setTimeout(() => { sh.style.transition = ''; }, 360); };
+  if (d.dy > Math.min(150, sh.offsetHeight * .3) || (d.dy > 40 && d.vy > .5)) {
+    if (sheetDirty() && !await ask('Discard what you typed?', 'Discard', true)) return back();
+    buzz(); close();
+  } else back();
+};
+$layer.addEventListener('touchend', endDrag); $layer.addEventListener('touchcancel', endDrag);
+
 // ---------- EVENTS ----------
 const picked = (root, g) => [...root.querySelectorAll(`[data-group="${g}"] .chip.on`)].map(b => b.dataset.id);
 document.addEventListener('click', async e => {
@@ -708,7 +800,7 @@ document.addEventListener('click', async e => {
   }
   if (['file', 'imp-map', 'restore-file', 'simplify'].includes(a)) return; // handled on change
   switch (a) {
-    case 'tab': UI.tab = el.dataset.t; render(); scrollTo(0, 0); break;
+    case 'tab': if (UI.tab !== el.dataset.t) { UI.tab = el.dataset.t; UI.enter = true; render(); scrollTo(0, 0); } break;
     case 'land': UI.landTab = el.dataset.t; render(); break;
     case 'add': if (amGuest(v) && v.me.expired) toast('Your guest access has ended'); else open({ type: 'add' }); break;
     case 'settle-any': open({ type: 'settle' }); break;
@@ -724,9 +816,9 @@ document.addEventListener('click', async e => {
       const on = !el.classList.contains('on');
       if (!el.dataset.multi) el.parentElement.querySelectorAll('.chip').forEach(c => { c.classList.remove('on'); c.setAttribute('aria-pressed', 'false'); });
       el.classList.toggle('on', el.dataset.multi ? on : true); el.setAttribute('aria-pressed', String(el.classList.contains('on')));
-      break;
+      buzz(); addPreview(); break;
     }
-    case 'quick': el.closest('form').description.value = el.dataset.q; break;
+    case 'quick': el.closest('form').description.value = el.dataset.q; buzz(); break;
     case 'del': {
       const id = el.dataset.id;
       if (id.startsWith('tmp_')) { Q = Q.filter(op => !(op.type === 'add' && 'tmp_' + op.body.cid === id)); ls.set(K.q, Q); }
@@ -843,7 +935,8 @@ document.addEventListener('submit', async e => {
     const at = atOfDay(f.date.value);
     if (at > Date.now()) return toast("That date hasn't happened yet");
     if (at < Date.now() - (BACKDATE_DAYS + 1) * 864e5) return toast('Entries can go back up to a year');
-    enqueue({ type: 'add', body: { cid: uid(), amount: amount / 100, description: f.description.value.trim(), paidBy, split, at } });
+    const cid = uid(); UI.flash = cid; setTimeout(() => { if (UI.flash === cid) UI.flash = null; }, 1900); buzz(12);
+    enqueue({ type: 'add', body: { cid, amount: amount / 100, description: f.description.value.trim(), paidBy, split, at } });
     close(); toast(UI.online ? 'Added' : "Saved offline. It syncs when you're back online.");
   }
   if (type === 'settle') {

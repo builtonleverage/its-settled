@@ -3,20 +3,26 @@
 import base64, io, os
 from PIL import Image, ImageDraw
 
-GREEN, WHITE = (31, 107, 85, 255), (255, 255, 255, 255)
-CHECK = [(146, 268), (220, 342), (366, 172)]   # same tick as icon.svg (512 viewBox)
+TOP, BOT = (46, 143, 112), (21, 82, 65)       # vertical gradient, same as icon.svg
+MINT, WHITE = (158, 226, 196, 255), (255, 255, 255, 255)
+SHORT, LONG = [(150, 266), (222, 338)], [(222, 338), (368, 176)]   # two strokes meet: two people, settled (512 viewBox)
 
 def icon(size, rounded, scale=1.0):
     S = size * 4                                # draw at 4x, then downsample for smooth edges
+    grad = Image.new('RGBA', (S, S)); gd = ImageDraw.Draw(grad)
+    for y in range(S): gd.line([(0, y), (S, y)], fill=tuple(int(a + (b - a) * y / S) for a, b in zip(TOP, BOT)) + (255,))
     im = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+    mask = Image.new('L', (S, S), 0); md = ImageDraw.Draw(mask)
+    if rounded: md.rounded_rectangle([0, 0, S - 1, S - 1], radius=int(S * 0.22), fill=255)
+    else: md.rectangle([0, 0, S, S], fill=255)
+    im.paste(grad, (0, 0), mask)
     d = ImageDraw.Draw(im)
-    if rounded: d.rounded_rectangle([0, 0, S - 1, S - 1], radius=int(S * 0.22), fill=GREEN)
-    else: d.rectangle([0, 0, S, S], fill=GREEN)
     k, c = S / 512 * scale, S / 2
-    pts = [(c + (x - 256) * k, c + (y - 256) * k) for x, y in CHECK]
-    w = int(56 * k)
-    d.line(pts, fill=WHITE, width=w, joint='curve')
-    for x, y in (pts[0], pts[-1]): d.ellipse([x - w / 2, y - w / 2, x + w / 2, y + w / 2], fill=WHITE)
+    w = int(60 * k)
+    for seg, col in ((SHORT, MINT), (LONG, WHITE)):   # white drawn last so it sits on top where they meet
+        pts = [(c + (x - 256) * k, c + (y - 256) * k) for x, y in seg]
+        d.line(pts, fill=col, width=w)
+        for x, y in pts: d.ellipse([x - w / 2, y - w / 2, x + w / 2, y + w / 2], fill=col)
     out = io.BytesIO(); im.resize((size, size), Image.LANCZOS).save(out, 'PNG', optimize=True)
     return base64.b64encode(out.getvalue()).decode()
 

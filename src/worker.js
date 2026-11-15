@@ -660,7 +660,7 @@ function askWhoPaid(env, due, reminder) {
 // is fetched in the background (stale-while-revalidate). If the fresh copy differs, open pages are told
 // so they can offer a reload. Fonts and icons are cache-first so the app looks right offline.
 // API calls are never cached here; the page keeps its own data cache and offline outbox in localStorage.
-const SW = `const C='its-settled-v2',F='its-settled-fonts-v1';
+const SW = `const C='its-settled-v3',F='its-settled-fonts-v1';
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(['/','/manifest.json','/icon-192.png','/icon-180.png'])));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C&&k!==F).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 const upd=new Set(); // pages opened from an outdated cached shell (by client id)
@@ -683,7 +683,7 @@ self.addEventListener('fetch',e=>{const req=e.request,u=new URL(req.url);
   })());
   if(/^\\/(icon[\\w-]*\\.(png|svg)|manifest\\.json)$/.test(u.pathname))return e.respondWith(cacheFirst(req,C));
 });`;
-const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#1f6b55"/><path d="M146 268l74 74 146-170" fill="none" stroke="#fff" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="g" x2="0" y2="1"><stop offset="0" stop-color="#2e8f70"/><stop offset="1" stop-color="#155241"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#g)"/><g stroke-width="60" stroke-linecap="round"><path d="M150 266l72 72" stroke="#9ee2c4"/><path d="M222 338l146-162" stroke="#fff"/></g></svg>`;
 let PNGS = null; // decoded once per isolate
 const png = name => (PNGS ??= Object.fromEntries(Object.entries(PNG_ICONS).map(([k, b]) => [k, Uint8Array.from(atob(b), c => c.charCodeAt(0))])))[name];
 const manifest = env => ({
