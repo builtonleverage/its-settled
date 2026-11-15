@@ -256,7 +256,7 @@ async function api(req, env, ctx, url) {
     if (kind === 'settle' && (split.length !== 1 || split[0][0] === paidBy)) return err('A payment goes from one person to another');
     const description = clean(body.description, 80) || (kind === 'settle' ? 'Settle up' : 'Expense');
     const cid = clean(body.cid, 40); // client id: an offline entry retried twice is stored once
-    const at = Number(body.at), created_at = at > now() - 30 * 864e5 && at <= now() + 6e4 ? at : now();
+    const at = Number(body.at), created_at = at > now() - 400 * 864e5 && at <= now() + 6e4 ? at : now();
     const r = await insertExpense(db, { flat_id: me.flat_id, kind, description, amount, paid_by: paidBy, split, created_by: me.id,
       ext_id: cid ? 'c:' + cid : null, created_at }).run();
     if (!r.meta.changes) return J({ ok: true, duplicate: true });

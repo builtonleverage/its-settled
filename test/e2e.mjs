@@ -38,6 +38,16 @@ ok(a1.d.ok && a2.d.duplicate, 'an offline entry sent twice is stored once');
 const milk = (await call(ben, 'GET', '/api/me')).d.expenses.find(x => x.description === 'Milk');
 ok(JSON.parse(milk.split).reduce((a, [, x]) => a + x, 0) === 45000, '₹450 split three ways sums exactly');
 ok((await call(admin, 'DELETE', '/api/expenses/' + milk.id)).s === 200, 'admin can delete any entry');
+
+// Backdating: a forgotten expense can be added with an earlier date (up to ~a year); absurd dates fall back to now.
+const day40 = Date.now() - 40 * 864e5, day500 = Date.now() - 500 * 864e5;
+await call(ben, 'POST', '/api/expenses', { cid: 'back-1', amount: '100', description: 'Backdated 40d', paidBy: ph.id, split: ids, at: day40 });
+await call(ben, 'POST', '/api/expenses', { cid: 'back-2', amount: '100', description: 'Backdated 500d', paidBy: ph.id, split: ids, at: day500 });
+await call(ben, 'POST', '/api/expenses', { cid: 'back-3', amount: '100', description: 'Future', paidBy: ph.id, split: ids, at: Date.now() + 5 * 864e5 });
+const list = (await call(ben, 'GET', '/api/me')).d.expenses, byName = n => list.find(x => x.description === n);
+ok(Math.abs(byName('Backdated 40d').created_at - day40) < 1000, 'an entry added with a date 40 days back keeps that date');
+ok(Math.abs(byName('Backdated 500d').created_at - Date.now()) < 60000, 'a date more than ~a year back falls back to now');
+ok(Math.abs(byName('Future').created_at - Date.now()) < 60000, 'a future date falls back to now');
 const mine = (await call(admin, 'POST', '/api/expenses', { amount: '10', split: [me.me.id] }), (await call(admin, 'GET', '/api/me')).d.expenses[0]);
 ok((await call(ben, 'DELETE', '/api/expenses/' + mine.id)).s === 403, "members can't delete someone else's entry");
 

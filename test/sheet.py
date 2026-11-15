@@ -49,6 +49,20 @@ with sync_playwright() as pw:
     p.click('.fab'); p.wait_for_selector('#a-amt'); p.mouse.click(195, 30); p.wait_for_timeout(300)
     ok(p.locator('.scrim').count() == 0 and p.locator('.ask').count() == 0, 'empty sheet closes on a tap outside, no prompt')
 
+    # 6. backdating: the date lands the entry on that day; today is the default; the future is refused
+    p.click('.fab'); p.wait_for_selector('#a-date')
+    ok(p.input_value('#a-date') == p.evaluate('ymd(Date.now())'), 'date defaults to today')
+    p.fill('#a-amt', '300'); p.fill('#a-desc', 'Backdated cab')
+    p.fill('#a-date', p.evaluate('ymd(Date.now() - 3 * 864e5)'))
+    p.screenshot(path='/tmp/sheet-date.png')
+    p.click('form[data-f=add] >> text=Save'); p.wait_for_timeout(600)
+    want = p.evaluate('day(Date.now() - 3 * 864e5)')
+    row = p.locator('.row', has_text='Backdated cab').first.inner_text()
+    ok(want in row, f'entry shows on the picked day ({want}): {row!r}')
+    p.click('.fab'); p.wait_for_selector('#a-date'); p.fill('#a-amt', '10'); p.fill('#a-desc', 'Future test')
+    p.fill('#a-date', p.evaluate('ymd(Date.now() + 2 * 864e5)')); p.click('form[data-f=add] >> text=Save'); p.wait_for_timeout(400)
+    ok(p.locator('#a-date').count() == 1 and p.locator('.row', has_text='Future test').count() == 0, 'a future date is refused and nothing is added')
+
     ok(not errors, f'no JS errors {errors}')
     br.close()
 raise SystemExit(1 if fails else 0)

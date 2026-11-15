@@ -74,6 +74,7 @@ A flatmate expense splitter, deployed as ONE Cloudflare Worker with a D1 (SQLite
 - **core.js:** only `export function` declarations, no imports, no module-level state, no closures; functions may call each other by name. They run in both the Worker and the browser.
 - **Online-only vs outbox:** everyday entries (add, settle, delete) go through the outbox (`enqueue`) so they work offline. Settings, guests and admin actions use `act()` and need a connection.
 - **No `alert`/`confirm`/`prompt`/`window.open`:** use `ask()`, `toast()` and real `<a href target=_blank>` links. Some in-app browsers and embeds block the native ones.
+- **Expense dates:** the add form sends `at` (a timestamp: the picked day at the current time of day, so same-day entries keep their order). The Worker accepts `at` from 400 days back to now and otherwise uses now; the date picker stops at 365 days (`BACKDATE_DAYS`). Balances never depend on the date.
 - **Sheets are rebuilt on every `render()`** (sync, 30s tick, online, tab focus). `renderSheet()` skips unchanged markup and carries typed text, chips and focus across a real change, and a tap outside a sheet with typed text asks first. Keep new sheet fields on an `id` or `name`, and keep chip groups in `data-group`, so this keeps working.
 - **Copy:** plain, short, active voice. Name things the way flatmates do. Errors say what went wrong and what to do.
 - **Privacy:** never commit `.dev.vars`, real exports or real names. The test fixture is synthetic; regenerate it with `node test/make-fixture.mjs`.

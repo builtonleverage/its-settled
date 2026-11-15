@@ -74,6 +74,8 @@ h1,h2,h3,.num{font-family:var(--display);letter-spacing:-.01em;text-wrap:balance
 label.f{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:14px 0 6px}
 .in{width:100%;height:48px;border-radius:13px;border:1px solid var(--line);background:var(--bg);padding:0 14px;font-size:16px;outline:none}
 .in:focus{border-color:var(--accent)}
+.in[type=date]{-webkit-appearance:none;appearance:none;display:block;min-height:48px;text-align:left;color:var(--ink)}
+.in[type=date]::-webkit-date-and-time-value{text-align:left}
 .in.huge{height:68px;font-size:34px;font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums}
 .nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);z-index:10}
 .nav .in-nav{max-width:520px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr 76px 1fr 1fr;align-items:center;height:64px}
@@ -150,6 +152,11 @@ const dayLong = t => new Date(t).toLocaleDateString(C.locale, { weekday: 'short'
 const monthKey = t => new Date(t).toLocaleDateString(C.locale, { month: 'long', year: 'numeric' });
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 24);
 const ord = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
+const ymd = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const BACKDATE_DAYS = 365; // how far back the date picker goes (the Worker accepts a little more)
+// A picked day becomes a timestamp at the current time of day, so entries on one day keep their order. Today stays "now".
+const atOfDay = s => { const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(s || ''), n = new Date(); if (!m || s === ymd(n)) return n.getTime();
+  return new Date(+m[1], +m[2] - 1, +m[3], n.getHours(), n.getMinutes(), n.getSeconds()).getTime(); };
 const endOfDay = addDays => { const d = new Date(); d.setHours(23, 59, 59, 999); d.setDate(d.getDate() + addDays); return d.getTime(); };
 const waHref = text => 'https://wa.me/?text=' + encodeURIComponent(text);
 const loginLink = token => location.origin + '/#login=' + token;
@@ -537,6 +544,7 @@ const SHEETS = {
       <label class="f" for="a-amt">Amount</label><input class="in huge" id="a-amt" name="amount" inputmode="decimal" placeholder="${esc(SYMBOL)}0" autofocus required>
       <label class="f" for="a-desc">What for</label><input class="in" id="a-desc" name="description" placeholder="Groceries" maxlength="80">
       <div class="chips" style="margin-top:8px">${frequent(v).map(q => `<button type="button" class="chip" data-a="quick" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+      <label class="f" for="a-date">Date</label><input class="in" type="date" id="a-date" name="date" value="${ymd(Date.now())}" min="${ymd(Date.now() - BACKDATE_DAYS * 864e5)}" max="${ymd(Date.now())}" required>
       <label class="f">Paid by</label>${chips(main, [v.me.id], 'paid', false, extra)}
       <label class="f">Split equally between</label>${chips(main, split, 'split', true, extra)}
       <button class="btn block" style="margin-top:20px">Save</button></form>`;
@@ -832,7 +840,10 @@ document.addEventListener('submit', async e => {
     if (!amount) return toast('Enter an amount');
     if (!split.length) return toast('Pick at least one person to split with');
     if (amGuest(v) && paidBy !== v.me.id && !split.includes(v.me.id)) return toast('As a guest, include yourself as payer or in the split');
-    enqueue({ type: 'add', body: { cid: uid(), amount: amount / 100, description: f.description.value.trim(), paidBy, split, at: Date.now() } });
+    const at = atOfDay(f.date.value);
+    if (at > Date.now()) return toast("That date hasn't happened yet");
+    if (at < Date.now() - (BACKDATE_DAYS + 1) * 864e5) return toast('Entries can go back up to a year');
+    enqueue({ type: 'add', body: { cid: uid(), amount: amount / 100, description: f.description.value.trim(), paidBy, split, at } });
     close(); toast(UI.online ? 'Added' : "Saved offline. It syncs when you're back online.");
   }
   if (type === 'settle') {
