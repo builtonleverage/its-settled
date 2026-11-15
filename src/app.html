@@ -83,7 +83,7 @@ label.f{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:1
 .nav button{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--faint)}
 .nav button.on{color:var(--ink)}
 .nav button svg{width:22px;height:22px}
-.nav .fab{width:56px;height:56px;border-radius:18px;background:var(--accent);color:var(--accent-ink);margin:-26px auto 0;box-shadow:0 6px 18px rgba(31,107,85,.35);justify-content:center}
+.nav .fab{width:56px;height:56px;border-radius:18px;background:var(--accent);color:var(--accent-ink);margin:-26px auto 0;box-shadow:0 6px 18px rgba(31,107,85,.35);box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 38%,transparent);justify-content:center}
 .nav .fab svg{width:26px;height:26px}
 .scrim,.ask{position:fixed;inset:0;background:var(--scrim);z-index:20;display:flex;align-items:flex-end;justify-content:center;animation:scrimin .25s ease}
 @keyframes scrimin{from{background:transparent}} /* fade the dim only, so the sheet itself is never see-through */
@@ -101,7 +101,7 @@ label.f{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:1
 .btn:active,.chip:active,.tabs button:active{transform:scale(.96)}
 .row.tap:active{transform:scale(.985)} .row.tap:active .ico{transform:scale(.9)}
 .nav button:active svg{transform:scale(.86)}
-.nav .fab{transition:transform .22s var(--spring),box-shadow .22s} .nav .fab:active{transform:scale(.9);box-shadow:0 2px 8px rgba(31,107,85,.3)}
+.nav .fab{transition:transform .22s var(--spring),box-shadow .22s} .nav .fab:active{transform:scale(.9);box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 30%,transparent)}
 .nav .fab svg{transition:transform .3s var(--spring)} .nav .fab:active svg{transform:rotate(90deg)}
 .chip.on{animation:pop .3s var(--spring)}
 @keyframes pop{40%{transform:scale(1.07)}}
@@ -118,6 +118,19 @@ label.f{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:1
 @keyframes draw{to{stroke-dashoffset:0}}
 .ttl{display:flex;align-items:center;gap:10px;min-width:0}
 .logo-row{display:flex;align-items:center;gap:14px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--chip);border-radius:13px;padding:4px}
+.seg button{height:38px;border-radius:10px;font-weight:600;color:var(--muted);transition:background-color .18s,color .18s,box-shadow .18s}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:var(--sh)}
+.swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:12px 8px}
+.sw{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);position:relative}
+.sw i{width:46px;height:46px;border-radius:50%;background:var(--sw);display:grid;place-items:center;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);transition:transform .2s var(--spring),box-shadow .2s}
+.sw.on i{box-shadow:0 0 0 3px var(--card),0 0 0 5.5px var(--sw);transform:scale(.92)}
+.sw.on{color:var(--ink)}
+.sw.on i::after{content:"";width:14px;height:8px;border:3px solid var(--swk,#fff);border-top:0;border-right:0;transform:translateY(-2px) rotate(-45deg)}
+.sw.custom i{background:conic-gradient(from 90deg,#e5484d,#f5a524,#46a758,#0090ff,#8e4ec6,#e5484d)}
+.sw.custom.on i{background:var(--sw)}
+.sw input[type=color]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
+.preview{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;border-radius:14px;background:var(--bg);margin-top:16px}
 .split-note{font-size:13px;color:var(--muted);margin-top:8px;min-height:19px;font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.mark.draw .s1,.mark.draw .s2{stroke-dashoffset:0}}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:12px;font-size:14px;font-weight:600;z-index:40;max-width:calc(100% - 32px);animation:toastin .36s var(--spring);box-shadow:0 8px 24px rgba(0,0,0,.18)}
@@ -210,7 +223,36 @@ let D = ls.get(K.cache);   // last server snapshot (renders instantly on open)
 let Q = ls.get(K.q, []);    // offline outbox: [{type:'add', body} | {type:'del', id}]
 const UI = { tab: 'home', sheet: null, syncing: false, online: navigator.onLine, landTab: 'join', imp: null, enter: true, flash: null, heroV: 0 };
 // The app mark: two strokes that meet. Same drawing as icon.svg and the PNG icons.
-const mark = (px, cls = '') => `<svg class="mark ${cls}" width="${px}" height="${px}" viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="mg${px}" x2="0" y2="1"><stop offset="0" stop-color="#2e8f70"/><stop offset="1" stop-color="#155241"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#mg${px})"/><g fill="none" stroke-width="60" stroke-linecap="round"><path class="s1" pathLength="1" d="M150 266l72 72" stroke="#9ee2c4"/><path class="s2" pathLength="1" d="M222 338l146-162" stroke="#fff"/></g></svg>`;
+const mark = (px, cls = '') => `<svg class="mark ${cls}" width="${px}" height="${px}" viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="mg${px}" x2="0" y2="1"><stop offset="0" style="stop-color:var(--mark-a,#2e8f70)"/><stop offset="1" style="stop-color:var(--mark-b,#155241)"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#mg${px})"/><g fill="none" stroke-width="60" stroke-linecap="round"><path class="s1" pathLength="1" d="M150 266l72 72" style="stroke:var(--mark-c,#9ee2c4)"/><path class="s2" pathLength="1" d="M222 338l146-162" stroke="#fff"/></g></svg>`;
+// ---------- APPEARANCE (per device) ----------
+// Mode: auto | light | dark. Colour: a preset name or a custom '#rrggbb'. Every colour is tuned to readable contrast
+// in both light and dark, so a flatmate can pick anything and buttons stay legible.
+const THEMES = [['forest', 'Forest', '#1f6b55'], ['ocean', 'Ocean', '#1d6a96'], ['indigo', 'Indigo', '#4652b8'], ['plum', 'Plum', '#7a3f9e'],
+  ['rose', 'Rose', '#b3366a'], ['clay', 'Clay', '#9c5a2e'], ['graphite', 'Graphite', '#3d4a52']];
+const hexRgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+const rgbHex = c => '#' + c.map(x => Math.round(Math.max(0, Math.min(255, x))).toString(16).padStart(2, '0')).join('');
+const mixC = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
+const lum = c => { const [r, g, b] = c.map(x => { x /= 255; return x <= .03928 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + .05) / (y + .05); };
+function tune(base, dark) {
+  const W = [255, 255, 255], K = [0, 0, 0], bg = dark ? hexRgb('#0f1311') : hexRgb('#eef1ec'), card = dark ? hexRgb('#171d1a') : hexRgb('#fbfcfa');
+  let c = hexRgb(base);
+  for (let i = 0; i < 40 && contrast(c, dark ? bg : W) < (dark ? 6.2 : 5); i++) c = mixC(c, dark ? W : K, .06); // readable as a button and as text
+  return { '--accent': rgbHex(c), '--accent-ink': dark ? '#0b1712' : '#ffffff', '--accent-soft': rgbHex(mixC(card, c, dark ? .22 : .17)),
+    '--mark-a': rgbHex(mixC(hexRgb(base), W, .12)), '--mark-b': rgbHex(mixC(hexRgb(base), K, .32)), '--mark-c': rgbHex(mixC(hexRgb(base), W, .62)) };
+}
+const THEME_VARS = ['--accent', '--accent-ink', '--accent-soft', '--mark-a', '--mark-b', '--mark-c'];
+const themeMode = () => ['light', 'dark'].includes(ls.get('is_theme')) ? ls.get('is_theme') : 'auto';
+const themeColor = () => { const c = ls.get('is_accent') || 'forest'; return /^#[0-9a-f]{6}$/i.test(c) || THEMES.some(t => t[0] === c) ? c : 'forest'; };
+const darkNow = () => themeMode() === 'dark' || (themeMode() === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+function applyTheme() {
+  const root = document.documentElement, mode = themeMode(), col = themeColor(), dark = darkNow();
+  if (mode === 'auto') delete root.dataset.theme; else root.dataset.theme = mode;
+  THEME_VARS.forEach(k => root.style.removeProperty(k));
+  if (col !== 'forest') { const vars = tune(col.startsWith('#') ? col : THEMES.find(t => t[0] === col)[2], dark); for (const k in vars) root.style.setProperty(k, vars[k]); }
+  document.querySelectorAll('meta[name=theme-color]').forEach(m => { if (mode === 'auto') m.content = m.media.includes('dark') ? '#0f1311' : '#eef1ec'; else m.content = dark ? '#0f1311' : '#eef1ec'; });
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const buzz = (ms = 8) => { try { navigator.vibrate?.(ms); } catch { /* not supported */ } }; // Android only; iPhone ignores it
 const token = () => ls.get(K.token);
@@ -482,7 +524,7 @@ function deviceCard(v) {
     ${canInstall() ? '<button class="btn sm" data-a="install">Install app</button>' : ''}
     ${DEMO ? '' : '<button class="btn sm ghost" data-a="device-link">Use on another device</button>'}
     ${DEMO && !amGuest(v) ? '<button class="btn sm ghost" data-a="demo-view" data-id="g1">See what a guest sees</button>' : ''}
-    <button class="btn sm ghost" data-a="theme">Light / dark</button>
+    <button class="btn sm ghost" data-a="appearance">Appearance</button>
     ${DEMO ? '<button class="btn sm ghost" data-a="demo-reset">Reset demo</button>' : '<button class="btn sm danger" data-a="signout-ask">Sign out</button>'}</div></div>`;
 }
 function landing() {
@@ -577,10 +619,14 @@ function addPreview() {
   btn.textContent = amt > 0 ? `Save ${fmt(amt)}` : 'Save';
   note.textContent = amt > 0 && ids.length > 1 ? `${fmt(equalShares(amt, ids)[0][1])} each · ${ids.length} people` : amt > 0 && ids.length === 1 ? 'One person carries all of it' : '';
 }
-document.addEventListener('input', e => { if (e.target.closest('form[data-f=add]')) addPreview(); });
+document.addEventListener('input', e => {
+  if (e.target.closest('form[data-f=add]')) addPreview();
+  if (e.target.id === 't-custom') { ls.set('is_accent', e.target.value.toLowerCase()); applyTheme(); } // live while dragging; no rebuild so the picker stays open
+});
+document.addEventListener('change', e => { if (e.target.id === 't-custom') renderSheet(); });
 // True when the open sheet has text the person typed and hasn't saved.
 const sheetDirty = () => [...$layer.querySelectorAll('.sheet input:not([type=file]):not([type=checkbox]):not([type=radio]),.sheet textarea')]
-  .some(f => f.value.trim() !== f.defaultValue.trim());
+  .some(f => f.type !== 'color' && f.value.trim() !== f.defaultValue.trim());
 function renderSheet() {
   if (!UI.sheet) { $layer.querySelectorAll('.scrim:not(.out)').forEach(n => n.remove()); sheetHtml = ''; return; } // let a closing sheet finish sliding away
   const v = view(), s = UI.sheet;
@@ -602,6 +648,18 @@ const chips = (list, sel, group, multi, extra = []) => `<div class="chips" data-
   [...list.map(m => [m, false]), ...extra.map((m, i) => [m, i === 0])].map(([m, first]) =>
     `${first ? '<span class="div">Guests</span>' : ''}<button type="button" class="chip${sel.includes(m.id) ? ' on' : ''}" data-a="chip" data-multi="${multi ? 1 : ''}" data-id="${m.id}" aria-pressed="${sel.includes(m.id)}">${esc(m.name)}</button>`).join('') + `</div>`;
 const SHEETS = {
+  theme() {
+    const mode = themeMode(), col = themeColor(), custom = col.startsWith('#');
+    const swk = darkNow() ? '#0b1712' : '#fff'; // tick colour on the picked swatch
+    const sw = THEMES.map(([k, name, hex]) => `<button type="button" class="sw${col === k ? ' on' : ''}" data-a="accent" data-k="${k}" style="--sw:${tune(hex, darkNow())['--accent']};--swk:${swk}" aria-pressed="${col === k}"><i></i>${name}</button>`).join('');
+    return `<h3>Appearance</h3><div class="t2 wrapt">Only changes this phone. Your flatmates keep their own.</div>
+      <label class="f">Mode</label><div class="seg" role="radiogroup">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) =>
+        `<button type="button" class="${mode === k ? 'on' : ''}" data-a="mode" data-m="${k}" role="radio" aria-checked="${mode === k}">${l}</button>`).join('')}</div>
+      <label class="f">Colour</label><div class="swatches">${sw}
+        <label class="sw custom${custom ? ' on' : ''}" style="--sw:${custom ? tune(col, darkNow())['--accent'] : '#888'};--swk:${swk}"><i></i>Custom<input type="color" id="t-custom" value="${custom ? col : '#c2410c'}" aria-label="Pick any colour"></label></div>
+      <div class="preview" aria-hidden="true">${mark(34)}<span class="btn sm">Save ₹900</span><span class="chip on" style="display:inline-flex;align-items:center">You</span><span class="badge acc">admin</span><span class="pos" style="font-weight:700">₹1,200</span></div>
+      <button type="button" class="btn block" style="margin-top:18px" data-a="close">Done</button>`;
+  },
   add(v) {
     const { main, extra } = pickers(v);
     const split = amGuest(v) ? [v.me.id, hostId(v)].filter(Boolean) : main.map(m => m.id);
@@ -891,10 +949,9 @@ document.addEventListener('click', async e => {
       catch { toast('Press and hold the box, then tap Paste'); $app.querySelector('#l-link').focus(); }
       break;
     case 'reload': location.reload(); break;
-    case 'theme': {
-      const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      const nx = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = nx; ls.set('is_theme', nx); break;
-    }
+    case 'appearance': open({ type: 'theme' }); break;
+    case 'mode': ls.set('is_theme', el.dataset.m === 'auto' ? null : el.dataset.m); applyTheme(); buzz(); renderSheet(); break;
+    case 'accent': ls.set('is_accent', el.dataset.k === 'forest' ? null : el.dataset.k); applyTheme(); buzz(); renderSheet(); break;
     case 'signout-ask': if (await ask('Sign out on this device? You need your login link (Flat → Use on another device) to get back in.', 'Sign out', true)) signOut(); break;
     case 'signout': signOut(); break;
     case 'leave': if (await ask('Cancel your join request?', 'Cancel request', true)) { await server('POST', '/api/leave').catch(() => {}); signOut(); } break;
@@ -1114,7 +1171,7 @@ async function demoServer(method, path, body = {}) {
 
 // ---------- BOOT ----------
 (function boot() {
-  const th = ls.get('is_theme'); if (th) document.documentElement.dataset.theme = th;
+  applyTheme();
   const h = location.hash.match(/^#login=(\w{20,})/);
   if (h && !DEMO) { ls.set(K.token, h[1]); ls.set(K.cache, null); D = null; history.replaceState(null, '', '/'); }
   const action = new URLSearchParams(location.search).get('action'); // home-screen shortcuts

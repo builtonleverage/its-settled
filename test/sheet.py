@@ -77,6 +77,27 @@ with sync_playwright() as pw:
     p.wait_for_timeout(450)
     ok(p.locator('.scrim').count() == 0, 'swiping the sheet down closes it')
 
+    # 8. Appearance: presets, custom colour and mode apply at once, survive a reload, and stay readable
+    p.click('.nav >> text=Flat'); p.click('[data-a=appearance]'); p.wait_for_selector('.swatches')
+    acc = lambda: p.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()")
+    default = acc(); p.click('.sw[data-k=ocean]'); p.wait_for_timeout(150)
+    ok(acc() != default and p.locator('.sw[data-k=ocean].on').count() == 1, f'Ocean applies at once ({default} -> {acc()})')
+    p.click('.seg [data-m=dark]'); p.wait_for_timeout(150)
+    ok(p.evaluate('document.documentElement.dataset.theme') == 'dark' and acc() != default, 'Dark mode applies and keeps the colour')
+    p.evaluate("""() => { const i = document.getElementById('t-custom'); i.value = '#ffe600'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); }""")
+    p.wait_for_timeout(150)
+    ratio = p.evaluate("""() => { const g = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+      const rgb = h => [1,3,5].map(i => parseInt(h.slice(i, i + 2), 16)); return contrast(rgb(g('--accent')), rgb(g('--accent-ink'))); }""")
+    ok(ratio >= 4.5 and p.locator('.sw.custom.on').count() == 1, f'a custom yellow is tuned to stay readable (contrast {ratio:.1f})')
+    p.click('.seg [data-m=light]'); p.wait_for_timeout(100)
+    ratio = p.evaluate("""() => { const g = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+      const rgb = h => [1,3,5].map(i => parseInt(h.slice(i, i + 2), 16)); return contrast(rgb(g('--accent')), rgb(g('--accent-ink'))); }""")
+    ok(ratio >= 4.5, f'the same yellow in light mode stays readable (contrast {ratio:.1f})')
+    p.reload(); p.wait_for_selector('.hero')
+    ok(p.evaluate("ls.get('is_accent')") == '#ffe600' and p.evaluate('document.documentElement.dataset.theme') == 'light', 'the choice survives a reload')
+    p.evaluate("ls.set('is_accent', null); ls.set('is_theme', null); applyTheme()")
+    ok(acc() == default and 'theme' not in p.evaluate('Object.keys(document.documentElement.dataset)'), 'Forest + Auto restores the defaults')
+
     ok(not errors, f'no JS errors {errors}')
     br.close()
 raise SystemExit(1 if fails else 0)
