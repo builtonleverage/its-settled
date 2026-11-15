@@ -74,6 +74,7 @@ A flatmate expense splitter, deployed as ONE Cloudflare Worker with a D1 (SQLite
 - **core.js:** only `export function` declarations, no imports, no module-level state, no closures; functions may call each other by name. They run in both the Worker and the browser.
 - **Online-only vs outbox:** everyday entries (add, settle, delete) go through the outbox (`enqueue`) so they work offline. Settings, guests and admin actions use `act()` and need a connection.
 - **No `alert`/`confirm`/`prompt`/`window.open`:** use `ask()`, `toast()` and real `<a href target=_blank>` links. Some in-app browsers and embeds block the native ones.
+- **Sheets are rebuilt on every `render()`** (sync, 30s tick, online, tab focus). `renderSheet()` skips unchanged markup and carries typed text, chips and focus across a real change, and a tap outside a sheet with typed text asks first. Keep new sheet fields on an `id` or `name`, and keep chip groups in `data-group`, so this keeps working.
 - **Copy:** plain, short, active voice. Name things the way flatmates do. Errors say what went wrong and what to do.
 - **Privacy:** never commit `.dev.vars`, real exports or real names. The test fixture is synthetic; regenerate it with `node test/make-fixture.mjs`.
 
@@ -85,6 +86,7 @@ npm run dev                               # in another terminal
 npm run test:api                          # needs .dev.vars (below) and test/mock-sheet.mjs running
 BASE=http://localhost:8787 python3 test/ui.py /tmp/shots   # Playwright, phone viewport, screenshots
 BASE=http://localhost:8787 python3 test/pwa.py              # installable app checks
+BASE=http://localhost:8787 python3 test/sheet.py            # typed text survives syncs and stray taps in bottom sheets
 ```
 `.dev.vars` for the API suites:
 ```

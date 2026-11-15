@@ -471,16 +471,60 @@ function pendingScreen(v) {
 // ---------- SHEETS ----------
 function open(sheet) { $layer.innerHTML = ''; UI.sheet = sheet; renderSheet(); }
 function close() { UI.sheet = null; renderSheet(); }
+// A sheet is rebuilt whenever render() runs (every background sync, 30s tick, online event, tab focus).
+// Rebuilding must never throw away what the person is typing, so: skip the rebuild when the markup is
+// unchanged, and when it did change, carry typed text, toggles, chip choices and focus across.
+let sheetHtml = '';
+const fieldKey = f => f.id || f.name;
+const FIELDS = 'input:not([type=file]),textarea';
+function snapFields(root) {
+  const vals = {}, a = document.activeElement;
+  root.querySelectorAll(FIELDS).forEach(f => {
+    const k = fieldKey(f); if (!k) return;
+    if (f.type === 'radio') { if (f.checked) vals[k] = f.value; }
+    else vals[k] = f.type === 'checkbox' ? f.checked : f.value;
+  });
+  const chips = {};
+  root.querySelectorAll('[data-group]').forEach(g => { chips[g.dataset.group] = [...g.querySelectorAll('.chip.on')].map(c => c.dataset.id); });
+  const focus = a && root.contains(a) && a.matches(FIELDS) && fieldKey(a) ? { k: fieldKey(a), s: a.selectionStart, e: a.selectionEnd } : null;
+  return { vals, chips, focus };
+}
+function restoreFields(root, snap) {
+  root.querySelectorAll(FIELDS).forEach(f => {
+    const k = fieldKey(f); if (!k || !(k in snap.vals)) return;
+    if (f.type === 'radio') f.checked = f.value === snap.vals[k];
+    else if (f.type === 'checkbox') f.checked = !!snap.vals[k];
+    else f.value = snap.vals[k];
+  });
+  root.querySelectorAll('[data-group]').forEach(g => {
+    const ids = snap.chips[g.dataset.group]; if (!ids) return;
+    const list = [...g.querySelectorAll('.chip')], multi = list.some(c => c.dataset.multi);
+    if (!multi && !list.some(c => ids.includes(c.dataset.id))) return; // the old pick is gone: keep the default
+    list.forEach(c => { const on = ids.includes(c.dataset.id); c.classList.toggle('on', on); c.setAttribute('aria-pressed', String(on)); });
+  });
+  if (snap.focus) {
+    const el = [...root.querySelectorAll(FIELDS)].find(f => fieldKey(f) === snap.focus.k);
+    if (el) { el.focus({ preventScroll: true }); try { el.setSelectionRange(snap.focus.s, snap.focus.e); } catch { /* not a text field */ } }
+  }
+}
+// True when the open sheet has text the person typed and hasn't saved.
+const sheetDirty = () => [...$layer.querySelectorAll('.sheet input:not([type=file]):not([type=checkbox]):not([type=radio]),.sheet textarea')]
+  .some(f => f.value.trim() !== f.defaultValue.trim());
 function renderSheet() {
-  if (!UI.sheet) { $layer.innerHTML = ''; return; }
+  if (!UI.sheet) { $layer.innerHTML = ''; sheetHtml = ''; return; }
   const v = view(), s = UI.sheet;
   const html = SHEETS[s.type](v, s);
   const existing = $layer.querySelector('.sheet');
-  if (existing) existing.innerHTML = `<div class="grab"></div>${html}`; // update in place, no re-animation
-  else {
+  if (existing) {
+    if (html === sheetHtml) return; // nothing changed: leave typed text, chips and the keyboard alone
+    const keep = snapFields(existing), top = existing.scrollTop;
+    existing.innerHTML = `<div class="grab"></div>${html}`; // update in place, no re-animation
+    restoreFields(existing, keep); existing.scrollTop = top;
+  } else {
     $layer.innerHTML = `<div class="scrim" data-a="scrim"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`;
     const auto = $layer.querySelector('[autofocus]'); if (auto) setTimeout(() => auto.focus(), 60);
   }
+  sheetHtml = html;
 }
 const chips = (list, sel, group, multi, extra = []) => `<div class="chips" data-group="${group}">` +
   [...list.map(m => [m, false]), ...extra.map((m, i) => [m, i === 0])].map(([m, first]) =>
@@ -649,7 +693,11 @@ const picked = (root, g) => [...root.querySelectorAll(`[data-group="${g}"] .chip
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const a = el.dataset.a, v = view();
-  if (a === 'scrim') { if (e.target === el) close(); return; }
+  if (a === 'scrim') {
+    if (e.target !== el) return;
+    if (sheetDirty() && !await ask('Discard what you typed?', 'Discard', true)) return; // a stray tap outside shouldn't cost the form
+    close(); return;
+  }
   if (['file', 'imp-map', 'restore-file', 'simplify'].includes(a)) return; // handled on change
   switch (a) {
     case 'tab': UI.tab = el.dataset.t; render(); scrollTo(0, 0); break;
