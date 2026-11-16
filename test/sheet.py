@@ -93,6 +93,12 @@ with sync_playwright() as pw:
     ratio = p.evaluate("""() => { const g = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
       const rgb = h => [1,3,5].map(i => parseInt(h.slice(i, i + 2), 16)); return contrast(rgb(g('--accent')), rgb(g('--accent-ink'))); }""")
     ok(ratio >= 4.5, f'the same yellow in light mode stays readable (contrast {ratio:.1f})')
+    # the colour input must survive picking and background syncs, or the phone's picker closes mid-drag
+    same = p.evaluate("""() => { const i = document.getElementById('t-custom');
+      for (const v of ['#ff0000', '#00ff00', '#0000ff']) { i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); render(); }
+      return i.isConnected && document.getElementById('t-custom') === i && document.querySelector('.sw.custom.on') !== null; }""")
+    ok(same, 'colour input is never rebuilt while picking or on a background sync')
+    p.evaluate("""() => { const i = document.getElementById('t-custom'); i.value = '#ffe600'; i.dispatchEvent(new Event('input', { bubbles: true })); }""")
     p.reload(); p.wait_for_selector('.hero')
     ok(p.evaluate("ls.get('is_accent')") == '#ffe600' and p.evaluate('document.documentElement.dataset.theme') == 'light', 'the choice survives a reload')
     p.evaluate("ls.set('is_accent', null); ls.set('is_theme', null); applyTheme()")

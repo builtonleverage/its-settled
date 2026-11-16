@@ -252,7 +252,17 @@ function applyTheme() {
   if (col !== 'forest') { const vars = tune(col.startsWith('#') ? col : THEMES.find(t => t[0] === col)[2], dark); for (const k in vars) root.style.setProperty(k, vars[k]); }
   document.querySelectorAll('meta[name=theme-color]').forEach(m => { if (mode === 'auto') m.content = m.media.includes('dark') ? '#0f1311' : '#eef1ec'; else m.content = dark ? '#0f1311' : '#eef1ec'; });
 }
-matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { applyTheme(); syncTheme(); });
+function syncTheme() {
+  const sh = $layer.querySelector('.scrim:not(.out) .swatches')?.closest('.sheet'); if (!sh) return;
+  const mode = themeMode(), col = themeColor(), custom = col.startsWith('#'), dark = darkNow(), swk = dark ? '#0b1712' : '#fff';
+  sh.querySelectorAll('.seg [data-m]').forEach(b => { const on = b.dataset.m === mode; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+  sh.querySelectorAll('.sw[data-k]').forEach(b => { const on = b.dataset.k === col; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
+    b.style.setProperty('--sw', tune(THEMES.find(t => t[0] === b.dataset.k)[2], dark)['--accent']); b.style.setProperty('--swk', swk); });
+  const cl = sh.querySelector('.sw.custom'), inp = cl.querySelector('input');
+  cl.classList.toggle('on', custom); cl.style.setProperty('--sw', custom ? tune(col, dark)['--accent'] : '#888'); cl.style.setProperty('--swk', swk);
+  if (custom && !inp.dataset.live) inp.value = col; // don't touch the input while someone is dragging in its picker
+}
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const buzz = (ms = 8) => { try { navigator.vibrate?.(ms); } catch { /* not supported */ } }; // Android only; iPhone ignores it
 const token = () => ls.get(K.token);
@@ -621,9 +631,8 @@ function addPreview() {
 }
 document.addEventListener('input', e => {
   if (e.target.closest('form[data-f=add]')) addPreview();
-  if (e.target.id === 't-custom') { ls.set('is_accent', e.target.value.toLowerCase()); applyTheme(); } // live while dragging; no rebuild so the picker stays open
+  if (e.target.id === 't-custom') { e.target.dataset.live = '1'; ls.set('is_accent', e.target.value.toLowerCase()); applyTheme(); syncTheme(); } // live while dragging, never rebuilt
 });
-document.addEventListener('change', e => { if (e.target.id === 't-custom') renderSheet(); });
 // True when the open sheet has text the person typed and hasn't saved.
 const sheetDirty = () => [...$layer.querySelectorAll('.sheet input:not([type=file]):not([type=checkbox]):not([type=radio]),.sheet textarea')]
   .some(f => f.type !== 'color' && f.value.trim() !== f.defaultValue.trim());
@@ -636,11 +645,11 @@ function renderSheet() {
     if (html === sheetHtml) return; // nothing changed: leave typed text, chips and the keyboard alone
     const keep = snapFields(existing), top = existing.scrollTop;
     existing.innerHTML = `<div class="grab"></div>${html}`; // update in place, no re-animation
-    restoreFields(existing, keep); existing.scrollTop = top; addPreview();
+    restoreFields(existing, keep); existing.scrollTop = top; addPreview(); syncTheme();
   } else {
     $layer.innerHTML = `<div class="scrim" data-a="scrim"><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div></div>`;
     const auto = $layer.querySelector('[autofocus]'); if (auto) setTimeout(() => auto.focus(), 60);
-    addPreview();
+    addPreview(); syncTheme();
   }
   sheetHtml = html;
 }
@@ -648,15 +657,14 @@ const chips = (list, sel, group, multi, extra = []) => `<div class="chips" data-
   [...list.map(m => [m, false]), ...extra.map((m, i) => [m, i === 0])].map(([m, first]) =>
     `${first ? '<span class="div">Guests</span>' : ''}<button type="button" class="chip${sel.includes(m.id) ? ' on' : ''}" data-a="chip" data-multi="${multi ? 1 : ''}" data-id="${m.id}" aria-pressed="${sel.includes(m.id)}">${esc(m.name)}</button>`).join('') + `</div>`;
 const SHEETS = {
+  // Markup never depends on the current choice, so background re-renders never rebuild it: rebuilding would
+  // replace the colour input and close the phone's colour picker mid-drag. syncTheme() paints the state in place.
   theme() {
-    const mode = themeMode(), col = themeColor(), custom = col.startsWith('#');
-    const swk = darkNow() ? '#0b1712' : '#fff'; // tick colour on the picked swatch
-    const sw = THEMES.map(([k, name, hex]) => `<button type="button" class="sw${col === k ? ' on' : ''}" data-a="accent" data-k="${k}" style="--sw:${tune(hex, darkNow())['--accent']};--swk:${swk}" aria-pressed="${col === k}"><i></i>${name}</button>`).join('');
     return `<h3>Appearance</h3><div class="t2 wrapt">Only changes this phone. Your flatmates keep their own.</div>
       <label class="f">Mode</label><div class="seg" role="radiogroup">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) =>
-        `<button type="button" class="${mode === k ? 'on' : ''}" data-a="mode" data-m="${k}" role="radio" aria-checked="${mode === k}">${l}</button>`).join('')}</div>
-      <label class="f">Colour</label><div class="swatches">${sw}
-        <label class="sw custom${custom ? ' on' : ''}" style="--sw:${custom ? tune(col, darkNow())['--accent'] : '#888'};--swk:${swk}"><i></i>Custom<input type="color" id="t-custom" value="${custom ? col : '#c2410c'}" aria-label="Pick any colour"></label></div>
+        `<button type="button" data-a="mode" data-m="${k}" role="radio">${l}</button>`).join('')}</div>
+      <label class="f">Colour</label><div class="swatches">${THEMES.map(([k, name]) => `<button type="button" class="sw" data-a="accent" data-k="${k}"><i></i>${name}</button>`).join('')}
+        <label class="sw custom"><i></i>Custom<input type="color" id="t-custom" value="#c2410c" aria-label="Pick any colour"></label></div>
       <div class="preview" aria-hidden="true">${mark(34)}<span class="btn sm">Save ₹900</span><span class="chip on" style="display:inline-flex;align-items:center">You</span><span class="badge acc">admin</span><span class="pos" style="font-weight:700">₹1,200</span></div>
       <button type="button" class="btn block" style="margin-top:18px" data-a="close">Done</button>`;
   },
@@ -950,8 +958,8 @@ document.addEventListener('click', async e => {
       break;
     case 'reload': location.reload(); break;
     case 'appearance': open({ type: 'theme' }); break;
-    case 'mode': ls.set('is_theme', el.dataset.m === 'auto' ? null : el.dataset.m); applyTheme(); buzz(); renderSheet(); break;
-    case 'accent': ls.set('is_accent', el.dataset.k === 'forest' ? null : el.dataset.k); applyTheme(); buzz(); renderSheet(); break;
+    case 'mode': ls.set('is_theme', el.dataset.m === 'auto' ? null : el.dataset.m); applyTheme(); buzz(); syncTheme(); break;
+    case 'accent': ls.set('is_accent', el.dataset.k === 'forest' ? null : el.dataset.k); applyTheme(); buzz(); syncTheme(); break;
     case 'signout-ask': if (await ask('Sign out on this device? You need your login link (Flat → Use on another device) to get back in.', 'Sign out', true)) signOut(); break;
     case 'signout': signOut(); break;
     case 'leave': if (await ask('Cancel your join request?', 'Cancel request', true)) { await server('POST', '/api/leave').catch(() => {}); signOut(); } break;
